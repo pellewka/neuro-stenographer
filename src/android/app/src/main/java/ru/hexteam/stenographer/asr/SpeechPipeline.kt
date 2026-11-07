@@ -173,10 +173,14 @@ class SpeechPipeline(
                 var used = 0f
                 for (t in own.sortedByDescending { it.end - it.start }) {
                     if (used >= EMBEDDING_SEC) break
-                    val from = (t.start * rate).toInt().coerceIn(0, block.size)
-                    val to = (t.end * rate).toInt().coerceIn(from, block.size)
+                    // Presentation turns last minutes; the model's memory grows with input length
+                    // (a 5-min turn took > 3 GB), so take at most the remaining budget from the middle.
+                    val take = minOf(t.end - t.start, EMBEDDING_SEC - used)
+                    val mid = (t.start + t.end) / 2
+                    val from = ((mid - take / 2) * rate).toInt().coerceIn(0, block.size)
+                    val to = ((mid + take / 2) * rate).toInt().coerceIn(from, block.size)
                     stream.acceptWaveform(block.copyOfRange(from, to), rate)
-                    used += t.end - t.start
+                    used += take
                 }
                 stream.inputFinished()
                 val embedding = if (embedder.isReady(stream)) embedder.compute(stream) else FloatArray(embedder.dim())

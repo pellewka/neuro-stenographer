@@ -1,4 +1,10 @@
-test_id,file_name,duration_s,processing_s,rtf,speakers_ref,speakers_found,utterances_ref,utterances_found,device,notes
-emu-001,dialog_cats.wav,30.99,8.1,0.26,2,2,6,6,AVD Pixel 8 API36 arm64 (M-series Mac),default settings
-emu-002,dialog_cats.wav,30.99,17.2,0.56,2,2,6,6,AVD Pixel 8 API36 arm64 (M-series Mac),LLM punctuation polish on
-mac-001,dialog_cats.wav,30.99,5.2,0.17,2,2,6,6,Mac sherpa-onnx python 4 threads,model validation
+test_id,file_name,profile,duration_s,processing_s,rtf,wer_percent,speakers_ref,speakers_found,speaker_accuracy_percent,device,notes
+final-001,dialog_cats.wav,podcast,30.99,7.1,0.23,5.8,2,2,,AVD Pixel 8 API36 arm64,6/6 replicas; '3' vs 'три' counted as error
+final-002,noisy.wav,podcast,30.99,,,21.2,2,2,,AVD Pixel 8 API36 arm64,white noise + 50 Hz hum at 5 dB SNR; DPDFNet auto
+final-003,mixed.wav,podcast,18.2,,,19.0,1,1,,AVD Pixel 8 API36 arm64,anglicisms; TTS reads English poorly
+final-004,alaska_song.mp3,music,121.2,324,2.67,,,,,AVD Pixel 8 API36 arm64,lyrics similarity 81.3% (1-WER)
+final-005,podcast3.wav,podcast,1262.9,493,0.39,,3,3,91.0,AVD Pixel 8 API36 arm64,204 turns; 2 blocks
+final-006,presentation3.wav,presentation,1260.4,122,0.10,,3,3,100.0,AVD Pixel 8 API36 arm64,94 turns; sequential speakers; 42 replicas
+calib-001,librispeech 12 conversations,podcast diarization,~2900,,0.08,,2..10,,88.1,Mac 2 threads,CAM++ 0.5 + merge 0.75
+before-001,podcast3.wav,podcast,1262.9,1548,1.22,,3,5,72.8,AVD Pixel 8 API36 arm64,before speaker linking fixes and CAM++
+before-002,alaska_song.mp3,podcast(v1),121.2,,,,,,,AVD Pixel 8 API36 arm64,lyrics similarity 33.3% before vocal separation
