@@ -8,15 +8,36 @@ import android.media.MediaFormat
 import android.net.Uri
 import java.nio.ByteOrder
 
+/** Decoded PCM in [-1, 1] at the file's own rate, channels interleaved. */
+class DecodedAudio(val samples: FloatArray, val sampleRate: Int, val channels: Int) {
+
+    val durationMs: Long get() = samples.size / channels * 1000L / sampleRate
+
+    /** Mono at [targetRate]: what the speech models consume. */
+    fun toMono(targetRate: Int): FloatArray = Resampler.resample(downmix(samples, channels), sampleRate, targetRate)
+
+    companion object {
+        fun downmix(interleaved: FloatArray, channels: Int): FloatArray {
+            if (channels <= 1) return interleaved
+            val frames = interleaved.size / channels
+            return FloatArray(frames) { f ->
+                var sum = 0f
+                for (c in 0 until channels) sum += interleaved[f * channels + c]
+                sum / channels
+            }
+        }
+    }
+}
+
 /**
- * Decodes any audio container supported by Android (wav, mp3, m4a, ogg, flac, ...)
- * into 16 kHz mono float PCM in [-1, 1].
+ * Decodes any audio container supported by Android (wav, mp3, m4a, ogg, flac, ...).
+ * The original rate and channels are kept: vocal separation needs full-band stereo.
  */
 class AudioDecoder(private val context: Context) {
 
     class DecodeException(message: String) : Exception(message)
 
-    fun decode(uri: Uri, targetRate: Int = TARGET_SAMPLE_RATE): FloatArray {
+    fun decode(uri: Uri): DecodedAudio {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(context, uri, null)
@@ -25,17 +46,13 @@ class AudioDecoder(private val context: Context) {
             } ?: throw DecodeException("В файле нет аудиодорожки")
             extractor.selectTrack(track)
             val format = extractor.getTrackFormat(track)
-            val decoded = decodeTrack(extractor, format)
-            val mono = downmix(decoded.samples, decoded.channels)
-            return Resampler.resample(mono, decoded.sampleRate, targetRate)
+            return decodeTrack(extractor, format)
         } finally {
             extractor.release()
         }
     }
 
-    private class Decoded(val samples: FloatArray, val sampleRate: Int, val channels: Int)
-
-    private fun decodeTrack(extractor: MediaExtractor, format: MediaFormat): Decoded {
+    private fun decodeTrack(extractor: MediaExtractor, format: MediaFormat): DecodedAudio {
         val mime = format.getString(MediaFormat.KEY_MIME) ?: throw DecodeException("Неизвестный формат")
         val codec = MediaCodec.createDecoderByType(mime)
         val out = FloatArrayBuilder()
@@ -98,18 +115,9 @@ class AudioDecoder(private val context: Context) {
             codec.release()
         }
         if (out.size == 0) throw DecodeException("Не удалось декодировать аудио")
-        return Decoded(out.toArray(), sampleRate, channels)
+        return DecodedAudio(out.toArray(), sampleRate, channels)
     }
 
-    private fun downmix(interleaved: FloatArray, channels: Int): FloatArray {
-        if (channels <= 1) return interleaved
-        val frames = interleaved.size / channels
-        return FloatArray(frames) { f ->
-            var sum = 0f
-            for (c in 0 until channels) sum += interleaved[f * channels + c]
-            sum / channels
-        }
-    }
 
     companion object {
         const val TARGET_SAMPLE_RATE = 16_000

@@ -53,14 +53,18 @@ object ModelConfigs {
         ),
     )
 
-    fun vad() = VadModelConfig(
+    /**
+     * Songs: separated vocals keep faint reverb tails, so a stricter threshold and
+     * longer chunks (fewer cuts inside lines) work best — tuned on a test song: 77% → 81%.
+     */
+    fun vad(music: Boolean = false) = VadModelConfig(
         sileroVadModelConfig = SileroVadModelConfig(
             model = VAD_MODEL,
-            threshold = 0.45f,
+            threshold = if (music) 0.6f else 0.45f,
             minSilenceDuration = 0.3f,
             minSpeechDuration = 0.2f,
             windowSize = 512,
-            maxSpeechDuration = 20f,
+            maxSpeechDuration = if (music) 30f else 20f,
         ),
         sampleRate = SAMPLE_RATE,
         numThreads = 1,

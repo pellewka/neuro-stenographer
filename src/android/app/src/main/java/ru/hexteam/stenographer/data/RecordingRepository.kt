@@ -41,6 +41,7 @@ class RecordingRepository(filesDir: File) {
             .put("status", recording.status.name)
             .put("processingMs", recording.processingMs)
             .put("denoised", recording.denoised)
+            .put("music", recording.music)
             .putOpt("summary", recording.summary)
             .putOpt("error", recording.error)
         File(dir, META).writeText(meta.toString())
@@ -69,6 +70,7 @@ class RecordingRepository(filesDir: File) {
             utterances = readTranscript(File(dir, TRANSCRIPT)),
             processingMs = meta.optLong("processingMs"),
             denoised = meta.optBoolean("denoised"),
+            music = meta.optBoolean("music"),
             summary = meta.optString("summary").takeIf { meta.has("summary") },
             error = meta.optString("error").takeIf { meta.has("error") },
         )

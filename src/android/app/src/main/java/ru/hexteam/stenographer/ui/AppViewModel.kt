@@ -21,13 +21,14 @@ import ru.hexteam.stenographer.asr.PipelineOptions
 import ru.hexteam.stenographer.asr.SpeechPipeline
 import ru.hexteam.stenographer.audio.AudioDecoder
 import ru.hexteam.stenographer.audio.AudioRecorder
+import ru.hexteam.stenographer.audio.VocalSeparator
+import ru.hexteam.stenographer.data.BundledAsset
 import ru.hexteam.stenographer.data.Recording
 import ru.hexteam.stenographer.data.RecordingRepository
 import ru.hexteam.stenographer.data.RecordingStatus
 import ru.hexteam.stenographer.data.Settings
 import ru.hexteam.stenographer.data.SettingsStore
 import ru.hexteam.stenographer.export.TranscriptJson
-import ru.hexteam.stenographer.llm.LlmModelStore
 import ru.hexteam.stenographer.llm.LlmService
 import java.io.File
 
@@ -37,14 +38,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
-    private val pipeline = SpeechPipeline(app.assets, threads)
+    private val llmModel = BundledAsset(app, BundledAsset.LLM)
+    private val separationModel = BundledAsset(app, BundledAsset.VOCAL_SEPARATION)
+    private val pipeline = SpeechPipeline(app.assets, threads) { VocalSeparator(separationModel.file, threads) }
     private val asrDispatcher = Dispatchers.Default.limitedParallelism(1)
     private val decoder = AudioDecoder(app)
     private val recorder = AudioRecorder()
     private val repository = RecordingRepository(app.filesDir)
     private val settingsStore = SettingsStore(app)
-    private val modelStore = LlmModelStore(app)
-    private val llm = LlmService(modelStore, threads)
+    private val llm = LlmService(llmModel, threads)
     private val playback = PlaybackController(
         scope = viewModelScope,
         onState = { p -> _state.update { it.copy(player = p) } },
@@ -64,8 +66,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun prepareModels() {
         try {
             withContext(Dispatchers.IO) {
-                if (modelStore.isBundled()) {
-                    modelStore.prepare { f -> setSetup(SetupState.Preparing("Распаковка LLM (первый запуск)", f)) }
+                if (separationModel.isBundled()) {
+                    separationModel.prepare { f -> setSetup(SetupState.Preparing("Распаковка моделей (первый запуск)", f)) }
+                }
+                if (llmModel.isBundled()) {
+                    llmModel.prepare { f -> setSetup(SetupState.Preparing("Распаковка LLM (первый запуск)", f)) }
                 }
             }
             setSetup(SetupState.Preparing("Загрузка модели распознавания", null))
@@ -163,11 +168,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         setProgress(recording, "Чтение аудио", null)
         val started = SystemClock.elapsedRealtime()
         val updated = try {
-            val samples = withContext(Dispatchers.Default) { decoder.decode(Uri.fromFile(recording.audioFile)) }
-            val durationMs = samples.size * 1000L / AudioDecoder.TARGET_SAMPLE_RATE
-            val options = PipelineOptions(settings.numSpeakers, settings.denoise, settings.latinAnglicisms)
+            val decoded = withContext(Dispatchers.Default) { decoder.decode(Uri.fromFile(recording.audioFile)) }
+            val durationMs = decoded.durationMs
+            val options = PipelineOptions(settings.numSpeakers, settings.denoise, settings.latinAnglicisms, settings.audioType)
             val result = withContext(asrDispatcher) {
-                pipeline.process(samples, options) { stage, f -> setProgress(recording, stage.title, f) }
+                pipeline.process(decoded, options) { stage, f -> setProgress(recording, stage.title, f) }
             }
             var utterances = result.utterances
             if (settings.llmPolish && utterances.isNotEmpty()) {
@@ -176,7 +181,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             recording.copy(
                 status = RecordingStatus.DONE, utterances = utterances, durationMs = durationMs,
-                processingMs = SystemClock.elapsedRealtime() - started, denoised = result.denoised,
+                processingMs = SystemClock.elapsedRealtime() - started, denoised = result.denoised, music = result.music,
             )
         } catch (e: CancellationException) {
             throw e

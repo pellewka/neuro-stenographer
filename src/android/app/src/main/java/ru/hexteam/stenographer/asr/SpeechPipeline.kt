@@ -6,33 +6,46 @@ import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization
 import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiser
 import com.k2fsa.sherpa.onnx.Vad
 import ru.hexteam.stenographer.audio.AudioEnhancer
+import ru.hexteam.stenographer.audio.DecodedAudio
+import ru.hexteam.stenographer.audio.MusicDetector
+import ru.hexteam.stenographer.audio.VocalSeparator
 import ru.hexteam.stenographer.model.SpeakerTurn
 import ru.hexteam.stenographer.model.TimedWord
 import ru.hexteam.stenographer.model.Utterance
 
 enum class DenoiseMode { AUTO, ON, OFF }
 
+/** SPEECH/MUSIC force the path; AUTO picks MUSIC when [MusicDetector] hears a song. */
+enum class AudioType { AUTO, SPEECH, MUSIC }
+
 data class PipelineOptions(
     /** Exact speaker count, or 0 to detect automatically. */
     val numSpeakers: Int = 0,
     val denoise: DenoiseMode = DenoiseMode.AUTO,
     val latinAnglicisms: Boolean = true,
+    val audioType: AudioType = AudioType.AUTO,
 )
 
 data class PipelineResult(
     val utterances: List<Utterance>,
     val snrDb: Float,
     val denoised: Boolean,
+    val music: Boolean,
 )
 
 /**
- * Full on-device pipeline: high-pass + level → (adaptive) DPDFNet denoising →
- * VAD → GigaAM ASR with token timestamps → pyannote + 3D-Speaker diarization →
- * word/speaker alignment → Latin spelling of anglicisms.
+ * Full on-device pipeline: song? → UVR vocal separation, otherwise high-pass + level →
+ * (adaptive) DPDFNet denoising → VAD → GigaAM ASR with token timestamps →
+ * pyannote + 3D-Speaker diarization → word/speaker alignment → Latin anglicisms.
  */
-class SpeechPipeline(private val assets: AssetManager, private val threads: Int) {
+class SpeechPipeline(
+    private val assets: AssetManager,
+    private val threads: Int,
+    private val separator: () -> VocalSeparator,
+) {
 
     enum class Stage(val title: String) {
+        SEPARATION("Отделение вокала от музыки"),
         DENOISE("Шумоподавление"),
         VAD("Поиск речи"),
         ASR("Распознавание речи"),
@@ -51,10 +64,24 @@ class SpeechPipeline(private val assets: AssetManager, private val threads: Int)
         recognizer
     }
 
-    fun process(samples: FloatArray, options: PipelineOptions, listener: ProgressListener): PipelineResult {
-        var audio = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(samples, ModelConfigs.SAMPLE_RATE))
+    fun process(decoded: DecodedAudio, options: PipelineOptions, listener: ProgressListener): PipelineResult {
+        val mono = decoded.toMono(ModelConfigs.SAMPLE_RATE)
+        val music = when (options.audioType) {
+            AudioType.SPEECH -> false
+            AudioType.MUSIC -> true
+            AudioType.AUTO -> MusicDetector.isMusic(mono, ModelConfigs.SAMPLE_RATE)
+        }
+        val voice = if (music) {
+            listener.onProgress(Stage.SEPARATION, 0f)
+            separator().separate(decoded, ModelConfigs.SAMPLE_RATE) { listener.onProgress(Stage.SEPARATION, it) }
+        } else {
+            mono
+        }
+
+        var audio = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(voice, ModelConfigs.SAMPLE_RATE))
         val snr = AudioEnhancer.estimateSnrDb(audio, ModelConfigs.SAMPLE_RATE)
-        val denoise = when (options.denoise) {
+        // Speech denoisers destroy singing (similarity 12% on a song), so never mix them with music.
+        val denoise = !music && when (options.denoise) {
             DenoiseMode.ON -> true
             DenoiseMode.OFF -> false
             DenoiseMode.AUTO -> snr < AUTO_DENOISE_SNR_DB
@@ -65,14 +92,14 @@ class SpeechPipeline(private val assets: AssetManager, private val threads: Int)
         }
 
         listener.onProgress(Stage.VAD, 0f)
-        val chunks = detectSpeech(audio)
+        val chunks = detectSpeech(audio, music)
 
         val words = mutableListOf<TimedWord>()
         chunks.forEachIndexed { i, chunk ->
             words += recognize(chunk)
             listener.onProgress(Stage.ASR, (i + 1f) / chunks.size)
         }
-        if (words.isEmpty()) return PipelineResult(emptyList(), snr, denoise)
+        if (words.isEmpty()) return PipelineResult(emptyList(), snr, denoise, music)
 
         val turns = diarize(audio, options.numSpeakers) { listener.onProgress(Stage.DIARIZATION, it) }
 
@@ -80,7 +107,7 @@ class SpeechPipeline(private val assets: AssetManager, private val threads: Int)
         val utterances = TranscriptAligner.align(words, turns).let { list ->
             if (options.latinAnglicisms) list.map { it.copy(text = AnglicismNormalizer.normalize(it.text)) } else list
         }
-        return PipelineResult(utterances, snr, denoise)
+        return PipelineResult(utterances, snr, denoise, music)
     }
 
     private fun denoise(audio: FloatArray): FloatArray {
@@ -96,11 +123,12 @@ class SpeechPipeline(private val assets: AssetManager, private val threads: Int)
 
     private class Chunk(val start: Float, val end: Float, val samples: FloatArray)
 
-    private fun detectSpeech(audio: FloatArray): List<Chunk> {
-        val vad = Vad(assets, ModelConfigs.vad())
+    private fun detectSpeech(audio: FloatArray, music: Boolean): List<Chunk> {
+        val config = ModelConfigs.vad(music)
+        val vad = Vad(assets, config)
         val raw = mutableListOf<Pair<Int, Int>>()
         try {
-            val window = ModelConfigs.vad().sileroVadModelConfig.windowSize
+            val window = config.sileroVadModelConfig.windowSize
             var offset = 0
             while (offset + window <= audio.size) {
                 vad.acceptWaveform(audio.copyOfRange(offset, offset + window))

@@ -217,7 +217,11 @@ private fun ExpandedContent(
         if (recording.status == RecordingStatus.DONE) {
             Text(
                 String.format(Locale.US, "Обработка %s · RTF %.2f%s", formatTime(recording.processingMs), recording.rtf,
-                    if (recording.denoised) " · шумоподавление" else ""),
+                    when {
+                        recording.music -> " · песня: вокал отделён"
+                        recording.denoised -> " · шумоподавление"
+                        else -> ""
+                    }),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

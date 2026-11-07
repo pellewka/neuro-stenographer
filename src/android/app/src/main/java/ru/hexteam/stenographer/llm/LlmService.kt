@@ -2,11 +2,12 @@ package ru.hexteam.stenographer.llm
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.hexteam.stenographer.data.BundledAsset
 import ru.hexteam.stenographer.model.Utterance
 import java.io.Closeable
 
 /** Owns the lazily loaded Qwen3 model and runs all LLM work on one thread. */
-class LlmService(private val store: LlmModelStore, private val threads: Int) : Closeable {
+class LlmService(private val model: BundledAsset, private val threads: Int) : Closeable {
 
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
     private var bridge: LlamaBridge? = null
@@ -19,8 +20,8 @@ class LlmService(private val store: LlmModelStore, private val threads: Int) : C
         withContext(dispatcher) { processor().polish(utterances, onProgress) }
 
     private fun processor(): LlmPostProcessor = processor ?: run {
-        check(store.isReady()) { "Модель LLM не найдена в APK" }
-        val loaded = LlamaBridge.load(store.modelFile.path, CONTEXT_SIZE, threads)
+        check(model.isReady()) { "Модель LLM не найдена в APK" }
+        val loaded = LlamaBridge.load(model.file.path, CONTEXT_SIZE, threads)
         bridge = loaded
         LlmPostProcessor(loaded).also { processor = it }
     }

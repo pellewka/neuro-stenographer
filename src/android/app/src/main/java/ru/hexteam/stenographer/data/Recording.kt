@@ -16,6 +16,7 @@ data class Recording(
     val utterances: List<Utterance> = emptyList(),
     val processingMs: Long = 0,
     val denoised: Boolean = false,
+    val music: Boolean = false,
     val summary: String? = null,
     val error: String? = null,
 ) {

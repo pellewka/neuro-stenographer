@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import ru.hexteam.stenographer.asr.AudioType
 import ru.hexteam.stenographer.asr.DenoiseMode
 import ru.hexteam.stenographer.data.Settings
 
@@ -52,6 +53,18 @@ fun SettingsScreen(
                     )
                 }
             }
+            Text("Тип записи", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AudioType.entries.forEach { type ->
+                    FilterChip(
+                        selected = settings.audioType == type,
+                        onClick = { onChange { it.copy(audioType = type) } },
+                        label = { Text(audioTypeLabel(type)) },
+                        enabled = enabled,
+                    )
+                }
+            }
+            Hint("Для песен вокал отделяется от музыки (UVR MDX-Net). «Авто» распознаёт музыку по басам.")
             Text("Шумоподавление (DPDFNet)", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DenoiseMode.entries.forEach { mode ->
@@ -82,6 +95,12 @@ fun SettingsScreen(
 
         Hint("Вся обработка выполняется на устройстве. У приложения нет доступа к интернету.")
     }
+}
+
+private fun audioTypeLabel(type: AudioType) = when (type) {
+    AudioType.AUTO -> "Авто"
+    AudioType.SPEECH -> "Речь"
+    AudioType.MUSIC -> "Песня"
 }
 
 private fun denoiseLabel(mode: DenoiseMode) = when (mode) {

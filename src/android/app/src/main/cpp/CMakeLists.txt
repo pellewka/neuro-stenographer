@@ -18,5 +18,5 @@ endif()
 
 add_subdirectory(${LLAMA_SRC} build-llama)
 
-add_library(stenollm SHARED llama_jni.cpp)
-target_link_libraries(stenollm llama android log)
+add_library(stenollm SHARED llama_jni.cpp separation_jni.cpp)
+target_link_libraries(stenollm llama android log dl)
