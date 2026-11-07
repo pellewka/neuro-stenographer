@@ -281,7 +281,7 @@ private fun ExpandedContent(
             )
             SummaryBlock(recording, summarizing) { actions.onSummarize(recording.id) }
             Text(
-                "Нажмите на реплику — воспроизведение с этого места; карандаш — исправить или распознать заново.",
+                "Нажмите на реплику - воспроизведение с этого места; карандаш - исправить или распознать заново.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -331,7 +331,7 @@ private fun UtteranceRow(u: Utterance, active: Boolean, reprocessing: Boolean, o
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(u.speakerId, color = speakerColor(u.speakerId), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.width(8.dp))
-                Text("${formatTime(u.startMs)} – ${formatTime(u.endMs)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${formatTime(u.startMs)} - ${formatTime(u.endMs)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(u.text, style = MaterialTheme.typography.bodyLarge)
         }
@@ -361,7 +361,7 @@ private fun EditUtteranceDialog(
     val newSpeaker = "speaker_${(speakers.mapNotNull { it.substringAfter('_').toIntOrNull() }.maxOrNull() ?: 0) + 1}"
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Реплика ${formatTime(utterance.startMs)} – ${formatTime(utterance.endMs)}") },
+        title = { Text("Реплика ${formatTime(utterance.startMs)} - ${formatTime(utterance.endMs)}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3)

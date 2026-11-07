@@ -49,7 +49,7 @@ object AudioEnhancer {
 
     /**
      * Rough SNR in dB: loud frames (speech) vs quiet frames (background).
-     * Clean speech with pauses gives 30+ dB, a noisy room or street 5–15 dB.
+     * Clean speech with pauses gives 30+ dB, a noisy room or street 5-15 dB.
      */
     fun estimateSnrDb(samples: FloatArray, sampleRate: Int): Float {
         val frame = sampleRate * FRAME_MS / 1000

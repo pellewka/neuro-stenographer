@@ -210,7 +210,7 @@ private fun ProcessingLabel(home: HomeState.Processing, queued: Int) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(home.title + percent, color = Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
         if (queued > 0) Text("ещё в очереди: $queued", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-        Text("Можно свернуть приложение — обработка продолжится", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, textAlign = TextAlign.Center)
+        Text("Можно свернуть приложение - обработка продолжится", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, textAlign = TextAlign.Center)
     }
 }
 

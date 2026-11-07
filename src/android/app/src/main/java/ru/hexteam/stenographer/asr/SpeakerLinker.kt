@@ -9,8 +9,8 @@ import kotlin.math.sqrt
  * most similar global speakers until at most [maxSpeakers] remain.
  *
  * Speakers the diarizer separated inside one block are "cannot-link": a mixed cluster can look
- * moderately similar to two people, so such pairs merge only above [splitThreshold] — the level
- * of one person split in two (same voice 0.9+, two similar voices 0.55–0.6).
+ * moderately similar to two people, so such pairs merge only above [splitThreshold] - the level
+ * of one person split in two (same voice 0.9+, two similar voices 0.55-0.6).
  */
 class SpeakerLinker(
     private val threshold: Float = DEFAULT_THRESHOLD,
@@ -86,7 +86,7 @@ class SpeakerLinker(
 
     companion object {
         const val DEFAULT_THRESHOLD = 0.7f
-        /** Calibrated on 2–10 real speakers (LibriSpeech): best accuracy at 0.75. */
+        /** Calibrated on 2-10 real speakers (LibriSpeech): best accuracy at 0.75. */
         const val DEFAULT_SPLIT_THRESHOLD = 0.75f
 
         fun cosine(a: FloatArray, b: FloatArray): Float {

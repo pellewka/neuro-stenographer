@@ -24,7 +24,7 @@ object ModelConfigs {
     /** Voice prints for linking/merging speakers: few calls, so the most discriminative model. */
     private const val EMBEDDING_MODEL = "models/3dspeaker-eres2netv2.onnx"
 
-    /** Inside diarization one embedding per window step: CAM++ is 4–5× faster at equal accuracy. */
+    /** Inside diarization one embedding per window step: CAM++ is 4-5× faster at equal accuracy. */
     private const val DIARIZATION_EMBEDDING_MODEL = "models/3dspeaker-campplus.onnx"
     private const val DENOISER_MODEL = "models/dpdfnet2.onnx"
 
@@ -33,7 +33,7 @@ object ModelConfigs {
     /**
      * Clustering threshold (lower = more speakers). Deliberately low: the diarizer may split one
      * person, and SpeakerLinker merges splits back by clean 20 s voice prints. Calibrated on
-     * LibriSpeech conversations of 2–10 real speakers: 88.1% time-weighted speaker accuracy,
+     * LibriSpeech conversations of 2-10 real speakers: 88.1% time-weighted speaker accuracy,
      * while two similar synthetic voices are still kept apart.
      */
     const val CLUSTER_THRESHOLD = 0.5f
@@ -64,7 +64,7 @@ object ModelConfigs {
 
     /**
      * Songs: separated vocals keep faint reverb tails, so a stricter threshold and
-     * longer chunks (fewer cuts inside lines) work best — tuned on a test song: 77% → 81%.
+     * longer chunks (fewer cuts inside lines) work best - tuned on a test song: 77% → 81%.
      */
     fun vad(music: Boolean = false) = VadModelConfig(
         sileroVadModelConfig = SileroVadModelConfig(

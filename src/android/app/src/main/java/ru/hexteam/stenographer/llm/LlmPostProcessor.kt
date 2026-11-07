@@ -21,7 +21,7 @@ class LlmPostProcessor(private val llm: LlamaBridge) {
         val parts = QwenPrompts.split(utterances, MAX_PARTS)
         val notes = parts.mapIndexed { i, part ->
             val text = QwenPrompts.dialogText(part, MAX_SUMMARY_INPUT_CHARS)
-            val span = "${QwenPrompts.clock(part.first().startMs)}–${QwenPrompts.clock(part.last().endMs)}"
+            val span = "${QwenPrompts.clock(part.first().startMs)}-${QwenPrompts.clock(part.last().endMs)}"
             "Часть ${i + 1} ($span):\n" + generate(QwenPrompts.PART_SYSTEM, text, PART_TOKENS)
         }
         return generate(system, notes.joinToString("\n\n"), MAX_SUMMARY_TOKENS)
@@ -52,21 +52,21 @@ class LlmPostProcessor(private val llm: LlamaBridge) {
 object QwenPrompts {
 
     const val PART_SYSTEM =
-        "Кратко перескажи этот фрагмент расшифровки на русском: 3–5 пунктов, кто что сказал " +
+        "Кратко перескажи этот фрагмент расшифровки на русском: 3-5 пунктов, кто что сказал " +
             "(speaker_N), без выдумок и без markdown."
 
     const val PRESENTATION_SYSTEM =
         "Ты секретарь конференции. По расшифровке выступлений составь краткий протокол на русском " +
             "строго в формате:\n" +
             "Тема мероприятия: одно предложение.\n" +
-            "Выступления:\n- speaker_N: тема выступления и 1–2 главных тезиса (по одному пункту на спикера)\n" +
+            "Выступления:\n- speaker_N: тема выступления и 1-2 главных тезиса (по одному пункту на спикера)\n" +
             "Вопросы и выводы:\n- вывод\n" +
             "Каждый пункт пиши один раз, без повторов и без markdown. " +
             "Используй только факты из расшифровки, ничего не выдумывай."
 
     const val MUSIC_SYSTEM =
         "По тексту песни (или нескольких песен) кратко опиши на русском: о чём песня, основные " +
-            "образы, повторяющийся припев. 3–5 пунктов, без markdown и без выдумок."
+            "образы, повторяющийся припев. 3-5 пунктов, без markdown и без выдумок."
 
     fun summarySystem(profile: Profile) = when (profile) {
         Profile.PODCAST -> SUMMARY_SYSTEM

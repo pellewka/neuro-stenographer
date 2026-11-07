@@ -5,8 +5,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Tells songs from speech. Music has strong bass (kick, bass line) in 40–120 Hz and
- * almost no pauses; speech — even noisy, even with mains hum — has neither.
+ * Tells songs from speech. Music has strong bass (kick, bass line) in 40-120 Hz and
+ * almost no pauses; speech - even noisy, even with mains hum - has neither.
  * Measured: song 0.60 bass share, noisy speech 0.035, clean speech ~0.
  */
 object MusicDetector {

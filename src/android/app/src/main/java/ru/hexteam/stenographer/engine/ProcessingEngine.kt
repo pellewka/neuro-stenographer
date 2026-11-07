@@ -38,7 +38,7 @@ import java.io.File
 /**
  * Application-wide owner of models, history and the processing queue. It outlives
  * activities, and [ProcessingService] keeps the process alive while it works, so a
- * 6–8 hour recording keeps processing with the screen off.
+ * 6-8 hour recording keeps processing with the screen off.
  */
 class ProcessingEngine(private val app: Application) {
 
