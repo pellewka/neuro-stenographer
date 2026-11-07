@@ -98,7 +98,10 @@ class SpeechPipeline(
                 speech.read(range.first, count)
             }
 
-            var block = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(voice, rate))
+            // Diarization uses the signal before denoising: DPDFNet makes voices more alike
+            // (two speakers 0.69 → 0.76 similarity) and they got merged; ASR uses the denoised one.
+            val speakerBlock = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(voice, rate))
+            var block = speakerBlock
             // Speech denoisers destroy singing (similarity 12% on a song), so never mix them with music.
             val denoise = !music && when (options.denoise) {
                 DenoiseMode.ON -> true
@@ -118,7 +121,7 @@ class SpeechPipeline(
                 report("Распознавание и определение говорящих", asrFrom, 1f, (asrProgress.get() + diarProgress.get()) / 2)
             val singleBlockExact = blocks.size == 1 && options.numSpeakers > 0
             val diarizationJob = diarizationExecutor.submit<List<SpeakerTurn>> {
-                diarize(block, if (singleBlockExact) options.numSpeakers else 0, minDurationOff(profile, music)) {
+                diarize(speakerBlock, if (singleBlockExact) options.numSpeakers else 0, minDurationOff(profile, music)) {
                     diarProgress.set(it)
                     reportBoth()
                 }
@@ -131,7 +134,7 @@ class SpeechPipeline(
             }
             val local = diarizationJob.get()
             if (chunks.isEmpty()) return@forEachIndexed
-            val mapping = linker.link(localSpeakers(block, local))
+            val mapping = linker.link(localSpeakers(speakerBlock, local))
             Log.i(TAG, "block ${index + 1}/${blocks.size}: ${local.map { it.speaker }.distinct().size} local speakers → $mapping")
             turns += local.map { SpeakerTurn(it.start + offsetSec, it.end + offsetSec, mapping.getValue(it.speaker)) }
         }

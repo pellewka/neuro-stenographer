@@ -98,8 +98,13 @@ AnglicismNormalizer → (опц.) Qwen3-редактура пунктуации 
 
 - sherpa-onnx 2.0.1 (Apache-2.0), ONNX Runtime
 - llama.cpp (MIT), коммит `cf659f2`
-- GigaAM v3 (MIT), pyannote segmentation 3.0 (MIT), 3D-Speaker ERes2NetV2 (Apache-2.0),
-  Silero VAD (MIT), DPDFNet (Apache-2.0), UVR MDX-Net (MIT), Qwen3-1.7B (Apache-2.0)
+- GigaAM v3 (MIT), pyannote segmentation 3.0 (MIT), 3D-Speaker ERes2NetV2 и CAM++ (Apache-2.0),
+  Silero VAD (MIT), Qwen3-1.7B (Apache-2.0)
+- DPDFNet2 (Ceva-IP): Apache-2.0 по карточке модели на Hugging Face
+  (статья под CC BY-NC-ND 4.0 — это лицензия текста статьи, не весов)
+- UVR-MDX-NET-Voc_FT: модель из проекта Ultimate Vocal Remover (код GUI — MIT); отдельной
+  лицензии на веса не указано, авторы просят упоминать UVR при использовании моделей —
+  указываем: модели отделения вокала © команда Ultimate Vocal Remover (Anjok07, aufr33)
 - AndroidX, Jetpack Compose, Kotlin coroutines
 
 ## Безопасность и приватность
