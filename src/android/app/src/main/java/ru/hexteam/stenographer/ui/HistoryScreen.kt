@@ -18,13 +18,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -34,6 +38,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,11 +72,14 @@ class HistoryActions(
     val onExport: (Recording) -> Unit,
     val onSummarize: (String) -> Unit,
     val onDelete: (String) -> Unit,
+    val onEditUtterance: (String, Int, String, String) -> Unit,
+    val onReprocessUtterance: (String, Int) -> Unit,
 )
 
 @Composable
 fun HistoryScreen(state: UiState, actions: HistoryActions, contentPadding: PaddingValues, modifier: Modifier = Modifier) {
     var pendingDelete by remember { mutableStateOf<Recording?>(null) }
+    var editing by remember { mutableStateOf<Pair<Recording, Int>?>(null) }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -107,17 +115,61 @@ fun HistoryScreen(state: UiState, actions: HistoryActions, contentPadding: Paddi
                 )
             }
         }
-        items(items, key = { it.id }) { recording ->
-            RecordingCard(
-                recording = recording,
-                expanded = state.expandedId == recording.id,
-                job = state.activeJob?.takeIf { it.recordingId == recording.id },
-                player = state.player.takeIf { it.recordingId == recording.id },
-                summarizing = state.summarizingId == recording.id,
-                actions = actions,
-                onDelete = { pendingDelete = recording },
-            )
+        for (recording in items) {
+            val expanded = state.expandedId == recording.id
+            val player = state.player.takeIf { it.recordingId == recording.id }
+            item(key = recording.id) {
+                RecordingCard(
+                    recording = recording,
+                    expanded = expanded,
+                    job = state.activeJob?.takeIf { it.recordingId == recording.id },
+                    player = player,
+                    summarizing = state.summarizingId == recording.id,
+                    actions = actions,
+                    onDelete = { pendingDelete = recording },
+                )
+            }
+            if (!expanded || recording.status != RecordingStatus.DONE) continue
+            // Replicas are separate lazy items: a 6-hour podcast has thousands of them.
+            itemsIndexed(recording.utterances, key = { i, _ -> "${recording.id}#$i" }) { i, u ->
+                val active = player?.isPlaying == true && player.positionMs in u.startMs..u.endMs
+                UtteranceRow(
+                    u = u,
+                    active = active,
+                    reprocessing = state.reprocessing == (recording.id to i),
+                    onClick = { actions.onSeek(recording.id, u.startMs) },
+                    onEdit = { editing = recording to i },
+                )
+            }
+            item(key = "${recording.id}#export") {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    FilledIconButton(onClick = { actions.onExport(recording) }, enabled = recording.utterances.isNotEmpty()) {
+                        Icon(Icons.Default.FileDownload, contentDescription = "Скачать JSON")
+                    }
+                }
+            }
         }
+    }
+
+    editing?.let { (recording, index) ->
+        val utterance = recording.utterances.getOrNull(index)
+        if (utterance == null) {
+            editing = null
+            return@let
+        }
+        EditUtteranceDialog(
+            utterance = utterance,
+            speakers = recording.utterances.map { it.speakerId }.distinct().sortedBy { it.substringAfter('_').toIntOrNull() ?: 0 },
+            onSave = { text, speaker ->
+                actions.onEditUtterance(recording.id, index, text, speaker)
+                editing = null
+            },
+            onReprocess = {
+                actions.onReprocessUtterance(recording.id, index)
+                editing = null
+            },
+            onDismiss = { editing = null },
+        )
     }
 
     pendingDelete?.let { recording ->
@@ -228,15 +280,11 @@ private fun ExpandedContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SummaryBlock(recording, summarizing) { actions.onSummarize(recording.id) }
-            recording.utterances.forEach { u ->
-                val active = player?.isPlaying == true && player.positionMs in u.startMs..u.endMs
-                UtteranceRow(u, active) { actions.onSeek(recording.id, u.startMs) }
-            }
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                FilledIconButton(onClick = { actions.onExport(recording) }, enabled = recording.utterances.isNotEmpty()) {
-                    Icon(Icons.Default.FileDownload, contentDescription = "Скачать JSON")
-                }
-            }
+            Text(
+                "Нажмите на реплику — воспроизведение с этого места; карандаш — исправить или распознать заново.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -267,10 +315,11 @@ private fun SummaryBlock(recording: Recording, summarizing: Boolean, onSummarize
 }
 
 @Composable
-private fun UtteranceRow(u: Utterance, active: Boolean, onClick: () -> Unit) {
+private fun UtteranceRow(u: Utterance, active: Boolean, reprocessing: Boolean, onClick: () -> Unit, onEdit: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
+            .padding(horizontal = 8.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(onClick = onClick)
@@ -286,5 +335,54 @@ private fun UtteranceRow(u: Utterance, active: Boolean, onClick: () -> Unit) {
             }
             Text(u.text, style = MaterialTheme.typography.bodyLarge)
         }
+        Spacer(Modifier.weight(1f))
+        if (reprocessing) {
+            CircularProgressIndicator(Modifier.padding(8.dp).size(20.dp), strokeWidth = 2.dp)
+        } else {
+            IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Edit, contentDescription = "Редактировать реплику", modifier = Modifier.size(18.dp))
+            }
+        }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+/** Fix a replica by hand, reassign its speaker, or run recognition on its fragment again. */
+@Composable
+private fun EditUtteranceDialog(
+    utterance: Utterance,
+    speakers: List<String>,
+    onSave: (String, String) -> Unit,
+    onReprocess: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember(utterance) { mutableStateOf(utterance.text) }
+    var speaker by remember(utterance) { mutableStateOf(utterance.speakerId) }
+    val newSpeaker = "speaker_${(speakers.mapNotNull { it.substringAfter('_').toIntOrNull() }.maxOrNull() ?: 0) + 1}"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Реплика ${formatTime(utterance.startMs)} – ${formatTime(utterance.endMs)}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+                Text("Говорящий", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (speakers + newSpeaker).forEach { id ->
+                        FilterChip(
+                            selected = speaker == id,
+                            onClick = { speaker = id },
+                            label = { Text(if (id == newSpeaker) "+ $id" else id, color = speakerColor(id)) },
+                        )
+                    }
+                }
+                TextButton(onClick = onReprocess) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Распознать фрагмент заново")
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(text, speaker) }) { Text("Сохранить") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
 }

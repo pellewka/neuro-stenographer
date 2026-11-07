@@ -117,6 +117,8 @@ fun AppScreen(viewModel: AppViewModel) {
                         },
                         onSummarize = viewModel::summarize,
                         onDelete = viewModel::delete,
+                        onEditUtterance = viewModel::editUtterance,
+                        onReprocessUtterance = viewModel::reprocessUtterance,
                     ),
                     contentPadding = listPadding,
                     modifier = Modifier.statusBarsPadding(),

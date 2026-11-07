@@ -39,6 +39,7 @@ data class UiState(
     val activeJob: ActiveJob? = null,
     val queued: Int = 0,
     val summarizingId: String? = null,
+    val reprocessing: Pair<String, Int>? = null,
     val query: String = "",
     val expandedId: String? = null,
     val player: PlayerState = PlayerState(),

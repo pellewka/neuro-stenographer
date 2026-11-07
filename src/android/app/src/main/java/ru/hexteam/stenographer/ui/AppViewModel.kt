@@ -46,6 +46,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         activeJob = e.activeJob?.let { ActiveJob(it.recordingId, it.title, it.fraction) },
                         queued = e.queued,
                         summarizingId = e.summarizingId,
+                        reprocessing = e.reprocessing,
                         settings = e.settings,
                     )
                 }
@@ -149,6 +150,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun summarize(id: String) = engine.summarize(id)
 
     fun exportJson(id: String, target: Uri) = engine.exportJson(id, target)
+
+    fun editUtterance(id: String, index: Int, text: String, speakerId: String) = engine.editUtterance(id, index, text, speakerId)
+
+    fun reprocessUtterance(id: String, index: Int) = engine.reprocessUtterance(id, index)
 
     fun delete(id: String) {
         if (_state.value.player.recordingId == id) playback.release()

@@ -5,12 +5,17 @@ import kotlin.math.sqrt
 /**
  * Long audio is diarized block by block; each block has its own local speaker ids.
  * The linker matches them across blocks by voice embeddings (cosine similarity of
- * ERes2NetV2 vectors: same voice 0.9+, different voices ≤ 0.6) and finally merges the
+ * speaker-embedding vectors: same voice 0.9+, different voices ≤ 0.6) and finally merges the
  * most similar global speakers until at most [maxSpeakers] remain.
+ *
+ * Speakers the diarizer separated inside one block are "cannot-link": a mixed cluster can look
+ * moderately similar to two people, so such pairs merge only above [splitThreshold] — the level
+ * of one person split in two.
  */
 class SpeakerLinker(
     private val threshold: Float = DEFAULT_THRESHOLD,
     private val maxSpeakers: Int = Int.MAX_VALUE,
+    private val splitThreshold: Float = DEFAULT_SPLIT_THRESHOLD,
 ) {
 
     /** A speaker found inside one block. */
@@ -21,6 +26,7 @@ class SpeakerLinker(
     }
 
     private val globals = mutableListOf<Global>()
+    private val separated = mutableSetOf<Pair<Int, Int>>()
 
     /** @return local id → global id for this block. Two locals of one block never share a global. */
     fun link(locals: List<LocalSpeaker>): Map<Int, Int> {
@@ -44,6 +50,8 @@ class SpeakerLinker(
             g.sum = FloatArray(v.size) { g.sum[it] + v[it] * local.durationSec }
             g.weight += local.durationSec
         }
+        val ids = mapping.values.distinct()
+        for (a in ids) for (b in ids) if (a < b) separated += a to b
         return mapping
     }
 
@@ -54,14 +62,17 @@ class SpeakerLinker(
      */
     fun finalMapping(): Map<Int, Int> {
         val clusters = globals.map { mutableListOf(it.id) to it.sum.copyOf() }.toMutableList()
+        val cap = maxSpeakers.coerceAtLeast(1)
         while (clusters.size > 1) {
             var best = Triple(0, 1, -2f)
             for (i in clusters.indices) for (j in i + 1 until clusters.size) {
                 val sim = cosine(normalize(clusters[i].second), normalize(clusters[j].second))
-                if (sim > best.third) best = Triple(i, j, sim)
+                // Above the cap any pair may merge; otherwise separated pairs need split-level similarity.
+                val needed = if (clusters.size > cap) -1f else if (isSeparated(clusters[i].first, clusters[j].first)) splitThreshold else threshold
+                if (sim >= needed && sim > best.third) best = Triple(i, j, sim)
             }
-            val (i, j, similarity) = best
-            if (similarity < threshold && clusters.size <= maxSpeakers.coerceAtLeast(1)) break
+            if (best.third < -1f) break
+            val (i, j, _) = best
             val merged = clusters[i].first + clusters[j].first
             val sum = FloatArray(clusters[i].second.size) { clusters[i].second[it] + clusters[j].second[it] }
             clusters.removeAt(j)
@@ -70,8 +81,12 @@ class SpeakerLinker(
         return clusters.flatMapIndexed { index, (ids, _) -> ids.map { it to index } }.toMap()
     }
 
+    private fun isSeparated(a: List<Int>, b: List<Int>): Boolean =
+        a.any { x -> b.any { y -> (minOf(x, y) to maxOf(x, y)) in separated } }
+
     companion object {
         const val DEFAULT_THRESHOLD = 0.7f
+        const val DEFAULT_SPLIT_THRESHOLD = 0.85f
 
         fun cosine(a: FloatArray, b: FloatArray): Float {
             var dot = 0f

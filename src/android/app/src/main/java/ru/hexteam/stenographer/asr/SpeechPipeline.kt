@@ -8,12 +8,15 @@ import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiser
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
 import com.k2fsa.sherpa.onnx.Vad
 import ru.hexteam.stenographer.audio.AudioEnhancer
+import ru.hexteam.stenographer.audio.DecodedAudio
 import ru.hexteam.stenographer.audio.MusicDetector
 import ru.hexteam.stenographer.audio.SpooledAudio
 import ru.hexteam.stenographer.audio.VocalSeparator
 import ru.hexteam.stenographer.model.SpeakerTurn
 import ru.hexteam.stenographer.model.TimedWord
 import ru.hexteam.stenographer.model.Utterance
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 enum class DenoiseMode { AUTO, ON, OFF }
 
@@ -48,7 +51,12 @@ class SpeechPipeline(
         fun onProgress(title: String, fraction: Float)
     }
 
-    private val recognizer by lazy { OfflineRecognizer(assets, ModelConfigs.recognizer(threads)) }
+    /** Cores are shared between ASR and the diarization running next to it. */
+    private val asrThreads = (threads / 2).coerceAtLeast(1)
+    private val diarizationThreads = (threads - asrThreads).coerceAtLeast(1)
+    private val diarizationExecutor = Executors.newSingleThreadExecutor()
+
+    private val recognizer by lazy { OfflineRecognizer(assets, ModelConfigs.recognizer(asrThreads)) }
     private val embedder by lazy { SpeakerEmbeddingExtractor(assets, ModelConfigs.embedding(threads)) }
 
     /** Loads the ASR model eagerly so the first run is not slowed down. */
@@ -103,20 +111,26 @@ class SpeechPipeline(
                 denoisedAny = true
             }
 
-            val asrTo = asrFrom + (1 - asrFrom) * 0.6f
-            report("Поиск речи", asrFrom, asrTo, 0f)
+            // ASR and diarization are independent: run them in parallel on separate cores.
+            val asrProgress = AtomicReference(0f)
+            val diarProgress = AtomicReference(0f)
+            fun reportBoth() =
+                report("Распознавание и определение говорящих", asrFrom, 1f, (asrProgress.get() + diarProgress.get()) / 2)
+            val singleBlockExact = blocks.size == 1 && options.numSpeakers > 0
+            val diarizationJob = diarizationExecutor.submit<List<SpeakerTurn>> {
+                diarize(block, if (singleBlockExact) options.numSpeakers else 0, minDurationOff(profile, music)) {
+                    diarProgress.set(it)
+                    reportBoth()
+                }
+            }
             val chunks = detectSpeech(block, music)
             chunks.forEachIndexed { i, chunk ->
                 words += recognize(chunk, offsetSec)
-                report("Распознавание речи", asrFrom, asrTo, (i + 1f) / chunks.size)
+                asrProgress.set((i + 1f) / chunks.size)
+                reportBoth()
             }
+            val local = diarizationJob.get()
             if (chunks.isEmpty()) return@forEachIndexed
-
-            val singleBlockExact = blocks.size == 1 && options.numSpeakers > 0
-            val windowShift = if (blocks.size == 1) FINE_WINDOW_SHIFT else COARSE_WINDOW_SHIFT
-            val local = diarize(block, if (singleBlockExact) options.numSpeakers else 0, minDurationOff(profile, music), windowShift) {
-                report("Определение говорящих", asrTo, 1f, it)
-            }
             val mapping = linker.link(localSpeakers(block, local))
             Log.i(TAG, "block ${index + 1}/${blocks.size}: ${local.map { it.speaker }.distinct().size} local speakers → $mapping")
             turns += local.map { SpeakerTurn(it.start + offsetSec, it.end + offsetSec, mapping.getValue(it.speaker)) }
@@ -133,6 +147,15 @@ class SpeechPipeline(
             if (options.latinAnglicisms) list.map { it.copy(text = AnglicismNormalizer.normalize(it.text)) } else list
         }
         return PipelineResult(utterances, denoisedAny, music)
+    }
+
+    /** Re-recognizes one fragment (a replica the user asked to redo). */
+    fun recognizeFragment(fragment: DecodedAudio, latinAnglicisms: Boolean): String {
+        val rate = ModelConfigs.SAMPLE_RATE
+        val audio = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(fragment.toMono(rate), rate))
+        val chunks = detectSpeech(audio, music = false).ifEmpty { listOf(Chunk(0f, audio.size.toFloat() / rate, audio)) }
+        val text = chunks.flatMap { recognize(it, 0f) }.joinToString(" ") { it.text }
+        return if (latinAnglicisms) AnglicismNormalizer.normalize(text) else text
     }
 
     private fun minDurationOff(profile: Profile, music: Boolean) =
@@ -220,14 +243,8 @@ class SpeechPipeline(
         }
     }
 
-    private fun diarize(
-        audio: FloatArray,
-        numSpeakers: Int,
-        minDurationOff: Float,
-        windowShift: Float,
-        onProgress: (Float) -> Unit,
-    ): List<SpeakerTurn> {
-        val diarizer = OfflineSpeakerDiarization(assets, ModelConfigs.diarization(threads, numSpeakers, minDurationOff, windowShift))
+    private fun diarize(audio: FloatArray, numSpeakers: Int, minDurationOff: Float, onProgress: (Float) -> Unit): List<SpeakerTurn> {
+        val diarizer = OfflineSpeakerDiarization(assets, ModelConfigs.diarization(diarizationThreads, numSpeakers, minDurationOff))
         try {
             // sherpa-onnx JNI looks up invoke(IIJ)Ljava/lang/Integer; which only class-based
             // lambdas have; Kotlin 2 compiles plain lambdas via invokedynamic.
@@ -246,8 +263,6 @@ class SpeechPipeline(
 
     private companion object {
         const val TAG = "SpeechPipeline"
-        const val FINE_WINDOW_SHIFT = 0.1f
-        const val COARSE_WINDOW_SHIFT = 0.25f
         const val PAD_SAMPLES = ModelConfigs.SAMPLE_RATE / 10 // 100 ms around each VAD chunk
 
         /** Below this estimated SNR the DPDFNet denoiser is applied in AUTO mode. */

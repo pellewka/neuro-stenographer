@@ -66,6 +66,22 @@ class AudioDecoder(private val context: Context) {
         withTrack(uri) { extractor, format -> decodeTrack(extractor, format, onProgress, sink) }
     }
 
+    /** Decodes only [startMs, endMs): used to re-recognize one replica of a long recording. */
+    fun decodeRange(uri: Uri, startMs: Long, endMs: Long): DecodedAudio {
+        val out = FloatArrayBuilder(1 shl 14)
+        var rate = 0
+        var channels = 1
+        withTrack(uri) { extractor, format ->
+            decodeTrack(extractor, format, {}, { samples, r, c ->
+                out.addAll(samples)
+                rate = r
+                channels = c
+            }, startMs * 1000, endMs * 1000)
+        }
+        if (out.size == 0) throw DecodeException("Фрагмент пуст")
+        return DecodedAudio(out.toArray(), rate, channels)
+    }
+
     private fun <T> withTrack(uri: Uri, block: (MediaExtractor, MediaFormat) -> T): T {
         val extractor = MediaExtractor()
         try {
@@ -80,7 +96,14 @@ class AudioDecoder(private val context: Context) {
         }
     }
 
-    private fun decodeTrack(extractor: MediaExtractor, format: MediaFormat, onProgress: (Float) -> Unit, sink: PcmSink) {
+    private fun decodeTrack(
+        extractor: MediaExtractor,
+        format: MediaFormat,
+        onProgress: (Float) -> Unit,
+        sink: PcmSink,
+        startUs: Long = 0,
+        endUs: Long = Long.MAX_VALUE,
+    ) {
         val mime = format.getString(MediaFormat.KEY_MIME) ?: throw DecodeException("Неизвестный формат")
         val durationUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
         val codec = MediaCodec.createDecoderByType(mime)
@@ -89,6 +112,7 @@ class AudioDecoder(private val context: Context) {
         var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
 
+        if (startUs > 0) extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
         try {
             codec.configure(format, null, null, 0)
             codec.start()
@@ -133,8 +157,12 @@ class AudioDecoder(private val context: Context) {
                                 val sb = buffer.asShortBuffer()
                                 FloatArray(sb.remaining()) { sb.get() / 32768f }
                             }
-                            sink.onPcm(chunk, sampleRate, channels)
-                            decodedAny = true
+                            val trimmed = trim(chunk, info.presentationTimeUs, sampleRate, channels, startUs, endUs)
+                            if (trimmed.isNotEmpty()) {
+                                sink.onPcm(trimmed, sampleRate, channels)
+                                decodedAny = true
+                            }
+                            if (info.presentationTimeUs > endUs) outputDone = true
                             if (durationUs > 0) onProgress((info.presentationTimeUs.toFloat() / durationUs).coerceIn(0f, 1f))
                         }
                         codec.releaseOutputBuffer(outIndex, false)
@@ -147,6 +175,15 @@ class AudioDecoder(private val context: Context) {
             codec.release()
         }
         if (!decodedAny) throw DecodeException("Не удалось декодировать аудио")
+    }
+
+    /** Keeps only the part of a decoded chunk (starting at [ptsUs]) that lies in [startUs, endUs). */
+    private fun trim(chunk: FloatArray, ptsUs: Long, rate: Int, channels: Int, startUs: Long, endUs: Long): FloatArray {
+        if (startUs <= 0 && endUs == Long.MAX_VALUE) return chunk
+        val frames = chunk.size / channels
+        val from = ((startUs - ptsUs) * rate / 1_000_000).coerceIn(0, frames.toLong()).toInt()
+        val to = if (endUs == Long.MAX_VALUE) frames else ((endUs - ptsUs) * rate / 1_000_000).coerceIn(from.toLong(), frames.toLong()).toInt()
+        return chunk.copyOfRange(from * channels, to * channels)
     }
 
 

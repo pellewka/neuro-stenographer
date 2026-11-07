@@ -50,6 +50,8 @@ class ProcessingEngine(private val app: Application) {
         val activeJob: Job? = null,
         val queued: Int = 0,
         val summarizingId: String? = null,
+        /** Replica being re-recognized: recording id to replica index. */
+        val reprocessing: Pair<String, Int>? = null,
         val settings: Settings = Settings(),
     ) {
         val isBusy: Boolean get() = activeJob != null || queued > 0
@@ -72,7 +74,7 @@ class ProcessingEngine(private val app: Application) {
     val events: SharedFlow<Event> = _events.asSharedFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
+    private val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
     private val llmModel = BundledAsset(app, BundledAsset.LLM)
     private val separationModel = BundledAsset(app, BundledAsset.VOCAL_SEPARATION)
     private val pipeline = SpeechPipeline(app.assets, threads) { VocalSeparator(separationModel.file, threads) }
@@ -209,6 +211,47 @@ class ProcessingEngine(private val app: Application) {
         }
     }
 
+    /** Manual correction of one replica: text and/or speaker. */
+    fun editUtterance(id: String, index: Int, text: String, speakerId: String) {
+        val recording = find(id) ?: return
+        val old = recording.utterances.getOrNull(index) ?: return
+        val updated = old.copy(text = text.trim().ifEmpty { old.text }, speakerId = speakerId)
+        scope.launch { persist(recording.copy(utterances = recording.utterances.toMutableList().also { it[index] = updated })) }
+    }
+
+    /** Runs ASR again on the time range of one replica (e.g. after a misrecognition). */
+    fun reprocessUtterance(id: String, index: Int) {
+        val recording = find(id) ?: return
+        val utterance = recording.utterances.getOrNull(index) ?: return
+        if (_state.value.reprocessing != null) return
+        scope.launch {
+            _state.update { it.copy(reprocessing = id to index) }
+            val result = runCatching {
+                val fragment = withContext(Dispatchers.IO) {
+                    decoder.decodeRange(
+                        Uri.fromFile(recording.audioFile),
+                        (utterance.startMs - FRAGMENT_PAD_MS).coerceAtLeast(0),
+                        utterance.endMs + FRAGMENT_PAD_MS,
+                    )
+                }
+                withContext(asrDispatcher) { pipeline.recognizeFragment(fragment, _state.value.settings.latinAnglicisms) }
+            }
+            result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            _state.update { it.copy(reprocessing = null) }
+            result.onSuccess { text ->
+                val current = find(id) ?: return@onSuccess
+                if (text.isBlank()) {
+                    emit(Event.Message("В фрагменте не найдено речи"))
+                    return@onSuccess
+                }
+                val list = current.utterances.toMutableList()
+                if (index in list.indices) list[index] = list[index].copy(text = text)
+                persist(current.copy(utterances = list))
+                emit(Event.Message("Фрагмент распознан заново"))
+            }.onFailure { emit(Event.Message("Ошибка повторного распознавания: ${it.message}")) }
+        }
+    }
+
     fun exportJson(id: String, target: Uri) {
         val recording = find(id) ?: return
         scope.launch {
@@ -270,6 +313,9 @@ class ProcessingEngine(private val app: Application) {
 
         /** Podcasts up to 20 min keep the original stereo in case they turn out to be music. */
         const val KEEP_ORIGINAL_MAX_US = 20L * 60 * 1_000_000
+
+        /** Context around a replica re-recognized on request, so edge words are not cut. */
+        const val FRAGMENT_PAD_MS = 200L
 
         /** LLM polishing is per replica: skipped for very long transcripts to keep time sane. */
         const val MAX_POLISH_UTTERANCES = 300
