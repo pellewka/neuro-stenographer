@@ -2,6 +2,7 @@ package ru.hexteam.stenographer.llm
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.hexteam.stenographer.asr.Profile
 import ru.hexteam.stenographer.data.BundledAsset
 import ru.hexteam.stenographer.model.Utterance
 import java.io.Closeable
@@ -13,8 +14,8 @@ class LlmService(private val model: BundledAsset, private val threads: Int) : Cl
     private var bridge: LlamaBridge? = null
     private var processor: LlmPostProcessor? = null
 
-    suspend fun summarize(utterances: List<Utterance>): String =
-        withContext(dispatcher) { processor().summarize(utterances) }
+    suspend fun summarize(utterances: List<Utterance>, profile: Profile): String =
+        withContext(dispatcher) { processor().summarize(utterances, profile) }
 
     suspend fun polish(utterances: List<Utterance>, onProgress: (Float) -> Unit): List<Utterance> =
         withContext(dispatcher) { processor().polish(utterances, onProgress) }

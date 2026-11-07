@@ -19,6 +19,8 @@ sealed interface HomeState {
     data class Done(val recordingId: String) : HomeState
 }
 
+data class RecordingState(val elapsedMs: Long, val level: Float)
+
 /** Progress of the recording currently being processed, shown in its history card. */
 data class ActiveJob(val recordingId: String, val title: String, val fraction: Float?)
 
@@ -31,9 +33,11 @@ data class PlayerState(
 data class UiState(
     val setup: SetupState = SetupState.Preparing("Подготовка моделей", null),
     val tab: Tab = Tab.HOME,
-    val home: HomeState = HomeState.Idle,
+    val recording: RecordingState? = null,
+    val lastFinishedId: String? = null,
     val recordings: List<Recording> = emptyList(),
     val activeJob: ActiveJob? = null,
+    val queued: Int = 0,
     val summarizingId: String? = null,
     val query: String = "",
     val expandedId: String? = null,
@@ -42,7 +46,16 @@ data class UiState(
     val settings: Settings = Settings(),
     val message: String? = null,
 ) {
-    val canStart: Boolean get() = setup is SetupState.Ready && activeJob == null && home !is HomeState.Recording
+    /** The big button: recording first, then the processing queue, then the result of the last job. */
+    val home: HomeState
+        get() = when {
+            recording != null -> HomeState.Recording(recording.elapsedMs, recording.level)
+            activeJob != null -> HomeState.Processing(activeJob.title, activeJob.fraction)
+            lastFinishedId != null -> HomeState.Done(lastFinishedId)
+            else -> HomeState.Idle
+        }
+
+    val canStart: Boolean get() = setup is SetupState.Ready && activeJob == null && queued == 0 && recording == null
 
     val filteredRecordings: List<Recording>
         get() {

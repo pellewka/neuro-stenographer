@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FileDownload
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ru.hexteam.stenographer.asr.Profile
 
 private val BIG_BUTTON = 200.dp
 
@@ -64,6 +67,7 @@ fun HomeScreen(
     onRecord: () -> Unit,
     onImport: () -> Unit,
     onDone: () -> Unit,
+    onProfile: (Profile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.fillMaxSize().background(HomeGradient)) {
@@ -72,8 +76,10 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            ProfilePicker(state.settings.profile, enabled = state.home == HomeState.Idle, onProfile)
+            Spacer(Modifier.height(28.dp))
             Text(headline(state), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(24.dp))
             AnimatedContent(
                 targetState = state.home is HomeState.Done,
                 transitionSpec = { (scaleIn(spring(Spring.DampingRatioMediumBouncy)) + fadeIn()) togetherWith fadeOut() },
@@ -88,7 +94,7 @@ fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = MaterialTheme.colorScheme.primary),
                 ) { Text("ОК", fontWeight = FontWeight.Bold) }
                 is HomeState.Recording -> Text(formatTime(home.elapsedMs), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light)
-                is HomeState.Processing -> ProcessingLabel(home)
+                is HomeState.Processing -> ProcessingLabel(home, state.queued)
                 HomeState.Idle -> ImportButton(enabled = state.canStart, onClick = onImport)
             }
             SetupHint(state.setup)
@@ -199,9 +205,45 @@ private fun ImportButton(enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ProcessingLabel(home: HomeState.Processing) {
+private fun ProcessingLabel(home: HomeState.Processing, queued: Int) {
     val percent = home.fraction?.let { " ${(it * 100).toInt()}%" } ?: ""
-    Text(home.title + percent, color = Color.White, fontSize = 16.sp)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(home.title + percent, color = Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
+        if (queued > 0) Text("ещё в очереди: $queued", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+        Text("Можно свернуть приложение — обработка продолжится", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, textAlign = TextAlign.Center)
+    }
+}
+
+/** Processing profile: picks models and parameters for the kind of audio. */
+@Composable
+private fun ProfilePicker(selected: Profile, enabled: Boolean, onSelect: (Profile) -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(
+            Modifier.clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = 0.18f)).padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Profile.entries.forEach { profile ->
+                val active = profile == selected
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (active) Color.White else Color.Transparent)
+                        .clickable(enabled = enabled) { onSelect(profile) }
+                        .semantics { contentDescription = "Профиль: ${profile.title}" }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        profile.title,
+                        color = if (active) MaterialTheme.colorScheme.primary else Color.White,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(selected.description, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, textAlign = TextAlign.Center)
+    }
 }
 
 @Composable

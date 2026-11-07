@@ -1,5 +1,6 @@
 package ru.hexteam.stenographer.data
 
+import ru.hexteam.stenographer.asr.Profile
 import ru.hexteam.stenographer.model.Utterance
 import java.io.File
 
@@ -11,6 +12,7 @@ data class Recording(
     val title: String,
     val createdAt: Long,
     val audioFile: File,
+    val profile: Profile = Profile.PODCAST,
     val durationMs: Long = 0,
     val status: RecordingStatus = RecordingStatus.PROCESSING,
     val utterances: List<Utterance> = emptyList(),

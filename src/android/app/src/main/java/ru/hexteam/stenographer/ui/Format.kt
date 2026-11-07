@@ -4,17 +4,27 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** m:ss.t */
+/** m:ss.t, or h:mm:ss.t for recordings longer than an hour. */
 fun formatTime(ms: Long): String {
     val totalSec = ms / 1000
     val tenths = (ms % 1000) / 100
-    return String.format(Locale.US, "%d:%02d.%d", totalSec / 60, totalSec % 60, tenths)
+    val h = totalSec / 3600
+    return if (h > 0) {
+        String.format(Locale.US, "%d:%02d:%02d.%d", h, totalSec / 60 % 60, totalSec % 60, tenths)
+    } else {
+        String.format(Locale.US, "%d:%02d.%d", totalSec / 60, totalSec % 60, tenths)
+    }
 }
 
-/** m:ss */
+/** m:ss, or h:mm:ss. */
 fun formatDuration(ms: Long): String {
     val totalSec = (ms + 500) / 1000
-    return String.format(Locale.US, "%d:%02d", totalSec / 60, totalSec % 60)
+    val h = totalSec / 3600
+    return if (h > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", h, totalSec / 60 % 60, totalSec % 60)
+    } else {
+        String.format(Locale.US, "%d:%02d", totalSec / 60, totalSec % 60)
+    }
 }
 
 fun formatDate(epochMs: Long): String =

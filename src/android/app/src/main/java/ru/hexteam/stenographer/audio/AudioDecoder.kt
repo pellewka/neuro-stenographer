@@ -37,7 +37,36 @@ class AudioDecoder(private val context: Context) {
 
     class DecodeException(message: String) : Exception(message)
 
+    /** Receives decoded PCM chunk by chunk: interleaved samples with their format. */
+    fun interface PcmSink {
+        fun onPcm(samples: FloatArray, sampleRate: Int, channels: Int)
+    }
+
+    /** Whole file in memory: only for short audio (tests, recordings). */
     fun decode(uri: Uri): DecodedAudio {
+        val out = FloatArrayBuilder()
+        var rate = 0
+        var channels = 1
+        decodeStreaming(uri) { samples, r, c ->
+            out.addAll(samples)
+            rate = r
+            channels = c
+        }
+        if (out.size == 0) throw DecodeException("Не удалось декодировать аудио")
+        return DecodedAudio(out.toArray(), rate, channels)
+    }
+
+    /** Track duration from the container, or null if unknown. */
+    fun durationUs(uri: Uri): Long? = withTrack(uri) { _, format ->
+        if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else null
+    }
+
+    /** Decodes without holding the whole file: hours of audio stream through [sink]. */
+    fun decodeStreaming(uri: Uri, onProgress: (Float) -> Unit = {}, sink: PcmSink) {
+        withTrack(uri) { extractor, format -> decodeTrack(extractor, format, onProgress, sink) }
+    }
+
+    private fun <T> withTrack(uri: Uri, block: (MediaExtractor, MediaFormat) -> T): T {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(context, uri, null)
@@ -45,17 +74,17 @@ class AudioDecoder(private val context: Context) {
                 extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
             } ?: throw DecodeException("В файле нет аудиодорожки")
             extractor.selectTrack(track)
-            val format = extractor.getTrackFormat(track)
-            return decodeTrack(extractor, format)
+            return block(extractor, extractor.getTrackFormat(track))
         } finally {
             extractor.release()
         }
     }
 
-    private fun decodeTrack(extractor: MediaExtractor, format: MediaFormat): DecodedAudio {
+    private fun decodeTrack(extractor: MediaExtractor, format: MediaFormat, onProgress: (Float) -> Unit, sink: PcmSink) {
         val mime = format.getString(MediaFormat.KEY_MIME) ?: throw DecodeException("Неизвестный формат")
+        val durationUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
         val codec = MediaCodec.createDecoderByType(mime)
-        val out = FloatArrayBuilder()
+        var decodedAny = false
         var sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
@@ -97,13 +126,16 @@ class AudioDecoder(private val context: Context) {
                             buffer.position(info.offset)
                             buffer.limit(info.offset + info.size)
                             buffer.order(ByteOrder.LITTLE_ENDIAN)
-                            if (pcmEncoding == AudioFormat.ENCODING_PCM_FLOAT) {
+                            val chunk = if (pcmEncoding == AudioFormat.ENCODING_PCM_FLOAT) {
                                 val fb = buffer.asFloatBuffer()
-                                while (fb.hasRemaining()) out.add(fb.get())
+                                FloatArray(fb.remaining()) { fb.get() }
                             } else {
                                 val sb = buffer.asShortBuffer()
-                                while (sb.hasRemaining()) out.add(sb.get() / 32768f)
+                                FloatArray(sb.remaining()) { sb.get() / 32768f }
                             }
+                            sink.onPcm(chunk, sampleRate, channels)
+                            decodedAny = true
+                            if (durationUs > 0) onProgress((info.presentationTimeUs.toFloat() / durationUs).coerceIn(0f, 1f))
                         }
                         codec.releaseOutputBuffer(outIndex, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
@@ -114,8 +146,7 @@ class AudioDecoder(private val context: Context) {
             runCatching { codec.stop() }
             codec.release()
         }
-        if (out.size == 0) throw DecodeException("Не удалось декодировать аудио")
-        return DecodedAudio(out.toArray(), sampleRate, channels)
+        if (!decodedAny) throw DecodeException("Не удалось декодировать аудио")
     }
 
 
@@ -134,6 +165,12 @@ class FloatArrayBuilder(initialCapacity: Int = 1 shl 16) {
     fun add(value: Float) {
         if (size == data.size) data = data.copyOf(data.size * 2)
         data[size++] = value
+    }
+
+    fun addAll(values: FloatArray) {
+        if (size + values.size > data.size) data = data.copyOf(maxOf(data.size * 2, size + values.size))
+        System.arraycopy(values, 0, data, size, values.size)
+        size += values.size
     }
 
     fun toArray(): FloatArray = data.copyOf(size)

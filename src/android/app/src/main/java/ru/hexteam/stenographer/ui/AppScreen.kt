@@ -2,6 +2,7 @@ package ru.hexteam.stenographer.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -56,8 +57,17 @@ fun AppScreen(viewModel: AppViewModel) {
     val snackbar = remember { SnackbarHostState() }
     var exportTarget by remember { mutableStateOf<Recording?>(null) }
 
-    val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let(viewModel::importAudio)
+    val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        viewModel.importAudio(uris)
+    }
+    // Progress of hours-long jobs is shown in a notification (Android 13+ asks for permission).
+    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
     val exportJson = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         val recording = exportTarget
@@ -92,6 +102,7 @@ fun AppScreen(viewModel: AppViewModel) {
                     },
                     onImport = { pickAudio.launch(arrayOf("audio/*", "video/mp4", "application/ogg")) },
                     onDone = viewModel::acknowledgeDone,
+                    onProfile = viewModel::selectProfile,
                 )
                 Tab.HISTORY -> HistoryScreen(
                     state = state,

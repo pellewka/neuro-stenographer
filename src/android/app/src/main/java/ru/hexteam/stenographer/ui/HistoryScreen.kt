@@ -180,8 +180,10 @@ private fun RecordingCard(
 
 private fun subtitle(recording: Recording, job: ActiveJob?): String = when {
     job != null -> job.title + (job.fraction?.let { " · ${(it * 100).toInt()}%" } ?: "")
+    recording.status == RecordingStatus.PROCESSING -> "${recording.profile.title} · в очереди"
     recording.status == RecordingStatus.FAILED -> recording.error ?: "Ошибка"
     else -> buildString {
+        append(recording.profile.title).append(" · ")
         append(formatDate(recording.createdAt))
         append(" · ").append(formatDuration(recording.durationMs))
         if (recording.speakerCount > 0) append(" · говорящих: ").append(recording.speakerCount)

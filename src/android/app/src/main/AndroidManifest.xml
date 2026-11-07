@@ -3,8 +3,15 @@
 
     <!-- No INTERNET permission: audio and text never leave the device. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Hours-long recordings are processed in a foreground service with a progress notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
+        android:name=".StenoApp"
         android:allowBackup="false"
         android:extractNativeLibs="false"
         android:icon="@android:drawable/ic_btn_speak_now"
@@ -21,5 +28,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".engine.ProcessingService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|mediaProcessing" />
     </application>
 </manifest>

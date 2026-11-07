@@ -4,10 +4,11 @@ import android.content.res.AssetManager
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization
 import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiser
+import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
 import com.k2fsa.sherpa.onnx.Vad
 import ru.hexteam.stenographer.audio.AudioEnhancer
-import ru.hexteam.stenographer.audio.DecodedAudio
 import ru.hexteam.stenographer.audio.MusicDetector
+import ru.hexteam.stenographer.audio.SpooledAudio
 import ru.hexteam.stenographer.audio.VocalSeparator
 import ru.hexteam.stenographer.model.SpeakerTurn
 import ru.hexteam.stenographer.model.TimedWord
@@ -15,28 +16,25 @@ import ru.hexteam.stenographer.model.Utterance
 
 enum class DenoiseMode { AUTO, ON, OFF }
 
-/** SPEECH/MUSIC force the path; AUTO picks MUSIC when [MusicDetector] hears a song. */
-enum class AudioType { AUTO, SPEECH, MUSIC }
-
 data class PipelineOptions(
-    /** Exact speaker count, or 0 to detect automatically. */
+    val profile: Profile = Profile.PODCAST,
+    /** Exact speaker count, or 0 to detect automatically (capped by the profile). */
     val numSpeakers: Int = 0,
     val denoise: DenoiseMode = DenoiseMode.AUTO,
     val latinAnglicisms: Boolean = true,
-    val audioType: AudioType = AudioType.AUTO,
 )
 
 data class PipelineResult(
     val utterances: List<Utterance>,
-    val snrDb: Float,
     val denoised: Boolean,
     val music: Boolean,
 )
 
 /**
- * Full on-device pipeline: song? → UVR vocal separation, otherwise high-pass + level →
- * (adaptive) DPDFNet denoising → VAD → GigaAM ASR with token timestamps →
- * pyannote + 3D-Speaker diarization → word/speaker alignment → Latin anglicisms.
+ * Full on-device pipeline, block by block so hours of audio fit in memory:
+ * [song → UVR vocal separation | speech → high-pass + level → adaptive DPDFNet] →
+ * VAD → GigaAM ASR with token timestamps → pyannote + 3D-Speaker diarization per block →
+ * speakers linked across blocks by voice embeddings → profile smoothing → replicas.
  */
 class SpeechPipeline(
     private val assets: AssetManager,
@@ -44,70 +42,119 @@ class SpeechPipeline(
     private val separator: () -> VocalSeparator,
 ) {
 
-    enum class Stage(val title: String) {
-        SEPARATION("Отделение вокала от музыки"),
-        DENOISE("Шумоподавление"),
-        VAD("Поиск речи"),
-        ASR("Распознавание речи"),
-        DIARIZATION("Определение говорящих"),
-        ALIGN("Сборка реплик"),
-    }
-
+    /** @param fraction overall progress 0..1 of the whole recording. */
     fun interface ProgressListener {
-        fun onProgress(stage: Stage, fraction: Float)
+        fun onProgress(title: String, fraction: Float)
     }
 
     private val recognizer by lazy { OfflineRecognizer(assets, ModelConfigs.recognizer(threads)) }
+    private val embedder by lazy { SpeakerEmbeddingExtractor(assets, ModelConfigs.embedding(threads)) }
 
     /** Loads the ASR model eagerly so the first run is not slowed down. */
     fun warmUp() {
         recognizer
     }
 
-    fun process(decoded: DecodedAudio, options: PipelineOptions, listener: ProgressListener): PipelineResult {
-        val mono = decoded.toMono(ModelConfigs.SAMPLE_RATE)
-        val music = when (options.audioType) {
-            AudioType.SPEECH -> false
-            AudioType.MUSIC -> true
-            AudioType.AUTO -> MusicDetector.isMusic(mono, ModelConfigs.SAMPLE_RATE)
-        }
-        val voice = if (music) {
-            listener.onProgress(Stage.SEPARATION, 0f)
-            separator().separate(decoded, ModelConfigs.SAMPLE_RATE) { listener.onProgress(Stage.SEPARATION, it) }
-        } else {
-            mono
-        }
+    fun process(audio: SpooledAudio, options: PipelineOptions, listener: ProgressListener): PipelineResult {
+        val speech = audio.speech
+        val rate = ModelConfigs.SAMPLE_RATE
+        val profile = options.profile
+        val music = profile.music || (profile == Profile.PODCAST &&
+            MusicDetector.isMusic(speech.read(0, MUSIC_PROBE_SEC * rate), rate))
 
-        var audio = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(voice, ModelConfigs.SAMPLE_RATE))
-        val snr = AudioEnhancer.estimateSnrDb(audio, ModelConfigs.SAMPLE_RATE)
-        // Speech denoisers destroy singing (similarity 12% on a song), so never mix them with music.
-        val denoise = !music && when (options.denoise) {
-            DenoiseMode.ON -> true
-            DenoiseMode.OFF -> false
-            DenoiseMode.AUTO -> snr < AUTO_DENOISE_SNR_DB
-        }
-        if (denoise) {
-            listener.onProgress(Stage.DENOISE, 0f)
-            audio = AudioEnhancer.normalizePeak(denoise(audio))
-        }
-
-        listener.onProgress(Stage.VAD, 0f)
-        val chunks = detectSpeech(audio, music)
-
+        val blockSec = if (music) Profile.MUSIC.blockSec else profile.blockSec
+        val blocks = BlockPlanner.plan(speech.frames, rate, blockSec) { start, count -> speech.read(start, count) }
+        val cap = if (options.numSpeakers > 0) options.numSpeakers else profile.maxSpeakers
+        val linker = SpeakerLinker(maxSpeakers = cap)
         val words = mutableListOf<TimedWord>()
-        chunks.forEachIndexed { i, chunk ->
-            words += recognize(chunk)
-            listener.onProgress(Stage.ASR, (i + 1f) / chunks.size)
+        val turns = mutableListOf<SpeakerTurn>()
+        var denoisedAny = false
+
+        blocks.forEachIndexed { index, range ->
+            val offsetSec = range.first.toFloat() / rate
+            val tag = if (blocks.size > 1) " · блок ${index + 1}/${blocks.size}" else ""
+            fun report(title: String, from: Float, to: Float, f: Float) =
+                listener.onProgress(title + tag, (index + from + (to - from) * f) / blocks.size)
+
+            val count = (range.last - range.first + 1).toInt()
+            val asrFrom = if (music) 0.5f else 0f
+            val voice = if (music) {
+                report("Отделение вокала от музыки", 0f, 0.5f, 0f)
+                val decoded = audio.original?.let { original ->
+                    val ratio = original.sampleRate.toDouble() / rate
+                    original.readDecoded((range.first * ratio).toLong(), (count * ratio).toInt())
+                } ?: speech.readDecoded(range.first, count)
+                separator().separate(decoded, rate) { report("Отделение вокала от музыки", 0f, 0.5f, it) }
+            } else {
+                speech.read(range.first, count)
+            }
+
+            var block = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(voice, rate))
+            // Speech denoisers destroy singing (similarity 12% on a song), so never mix them with music.
+            val denoise = !music && when (options.denoise) {
+                DenoiseMode.ON -> true
+                DenoiseMode.OFF -> false
+                DenoiseMode.AUTO -> AudioEnhancer.estimateSnrDb(block, rate) < AUTO_DENOISE_SNR_DB
+            }
+            if (denoise) {
+                report("Шумоподавление", asrFrom, asrFrom, 0f)
+                block = AudioEnhancer.normalizePeak(denoise(block))
+                denoisedAny = true
+            }
+
+            val asrTo = asrFrom + (1 - asrFrom) * 0.6f
+            report("Поиск речи", asrFrom, asrTo, 0f)
+            val chunks = detectSpeech(block, music)
+            chunks.forEachIndexed { i, chunk ->
+                words += recognize(chunk, offsetSec)
+                report("Распознавание речи", asrFrom, asrTo, (i + 1f) / chunks.size)
+            }
+            if (chunks.isEmpty()) return@forEachIndexed
+
+            val singleBlockExact = blocks.size == 1 && options.numSpeakers > 0
+            val local = diarize(block, if (singleBlockExact) options.numSpeakers else 0, minDurationOff(profile, music)) {
+                report("Определение говорящих", asrTo, 1f, it)
+            }
+            val mapping = linker.link(localSpeakers(block, local))
+            turns += local.map { SpeakerTurn(it.start + offsetSec, it.end + offsetSec, mapping.getValue(it.speaker)) }
         }
-        if (words.isEmpty()) return PipelineResult(emptyList(), snr, denoise, music)
 
-        val turns = diarize(audio, options.numSpeakers) { listener.onProgress(Stage.DIARIZATION, it) }
-
-        listener.onProgress(Stage.ALIGN, 1f)
-        val utterances = TranscriptAligner.align(words, turns).let { list ->
+        if (words.isEmpty()) return PipelineResult(emptyList(), denoisedAny, music)
+        listener.onProgress("Сборка реплик", 1f)
+        val final = linker.finalMapping()
+        var globalTurns = turns.map { it.copy(speaker = final.getValue(it.speaker)) }.sortedBy { it.start }
+        if (profile.minTurnSec > 0f) globalTurns = TurnSmoother.smooth(globalTurns, profile.minTurnSec)
+        val maxUtterance = if (music) Profile.MUSIC.maxUtteranceSec else profile.maxUtteranceSec
+        val utterances = TranscriptAligner.align(words, globalTurns, maxUtteranceSec = maxUtterance).let { list ->
             if (options.latinAnglicisms) list.map { it.copy(text = AnglicismNormalizer.normalize(it.text)) } else list
         }
-        return PipelineResult(utterances, snr, denoise, music)
+        return PipelineResult(utterances, denoisedAny, music)
+    }
+
+    private fun minDurationOff(profile: Profile, music: Boolean) =
+        if (music) Profile.MUSIC.minDurationOffSec else profile.minDurationOffSec
+
+    /** Voice print of every local speaker from up to [EMBEDDING_SEC] of its longest turns. */
+    private fun localSpeakers(block: FloatArray, turns: List<SpeakerTurn>): List<SpeakerLinker.LocalSpeaker> {
+        val rate = ModelConfigs.SAMPLE_RATE
+        return turns.groupBy { it.speaker }.map { (speaker, own) ->
+            val stream = embedder.createStream()
+            try {
+                var used = 0f
+                for (t in own.sortedByDescending { it.end - it.start }) {
+                    if (used >= EMBEDDING_SEC) break
+                    val from = (t.start * rate).toInt().coerceIn(0, block.size)
+                    val to = (t.end * rate).toInt().coerceIn(from, block.size)
+                    stream.acceptWaveform(block.copyOfRange(from, to), rate)
+                    used += t.end - t.start
+                }
+                stream.inputFinished()
+                val embedding = if (embedder.isReady(stream)) embedder.compute(stream) else FloatArray(embedder.dim())
+                SpeakerLinker.LocalSpeaker(speaker, embedding, own.sumOf { (it.end - it.start).toDouble() }.toFloat())
+            } finally {
+                stream.release()
+            }
+        }
     }
 
     private fun denoise(audio: FloatArray): FloatArray {
@@ -155,20 +202,22 @@ class SpeechPipeline(
         }
     }
 
-    private fun recognize(chunk: Chunk): List<TimedWord> {
+    private fun recognize(chunk: Chunk, offsetSec: Float): List<TimedWord> {
         val stream = recognizer.createStream()
         try {
             stream.acceptWaveform(chunk.samples, ModelConfigs.SAMPLE_RATE)
             recognizer.decode(stream)
             val result = recognizer.getResult(stream)
-            return WordBuilder.build(result.tokens.toList(), result.timestamps.toList(), chunk.start, chunk.end)
+            return WordBuilder.build(
+                result.tokens.toList(), result.timestamps.toList(), chunk.start + offsetSec, chunk.end + offsetSec,
+            )
         } finally {
             stream.release()
         }
     }
 
-    private fun diarize(audio: FloatArray, numSpeakers: Int, onProgress: (Float) -> Unit): List<SpeakerTurn> {
-        val diarizer = OfflineSpeakerDiarization(assets, ModelConfigs.diarization(threads, numSpeakers))
+    private fun diarize(audio: FloatArray, numSpeakers: Int, minDurationOff: Float, onProgress: (Float) -> Unit): List<SpeakerTurn> {
+        val diarizer = OfflineSpeakerDiarization(assets, ModelConfigs.diarization(threads, numSpeakers, minDurationOff))
         try {
             // sherpa-onnx JNI looks up invoke(IIJ)Ljava/lang/Integer; which only class-based
             // lambdas have; Kotlin 2 compiles plain lambdas via invokedynamic.
@@ -190,5 +239,11 @@ class SpeechPipeline(
 
         /** Below this estimated SNR the DPDFNet denoiser is applied in AUTO mode. */
         const val AUTO_DENOISE_SNR_DB = 20f
+
+        /** Seconds of the start of a podcast checked for music. */
+        const val MUSIC_PROBE_SEC = 60
+
+        /** Seconds of speech per local speaker used for its voice print. */
+        const val EMBEDDING_SEC = 20f
     }
 }

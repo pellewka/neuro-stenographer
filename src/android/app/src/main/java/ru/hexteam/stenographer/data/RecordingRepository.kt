@@ -3,6 +3,7 @@ package ru.hexteam.stenographer.data
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import ru.hexteam.stenographer.asr.Profile
 import ru.hexteam.stenographer.export.TranscriptJson
 import ru.hexteam.stenographer.model.Utterance
 import java.io.File
@@ -22,12 +23,12 @@ class RecordingRepository(filesDir: File) {
             .sortedByDescending { it.createdAt }
 
     /** Creates a new item; [writeAudio] copies the audio into the item folder. */
-    fun create(title: String, extension: String, writeAudio: (File) -> Unit): Recording {
-        val id = System.currentTimeMillis().toString()
+    fun create(title: String, extension: String, profile: Profile, writeAudio: (File) -> Unit): Recording {
+        val id = uniqueId()
         val dir = File(root, id).apply { mkdirs() }
         val audio = File(dir, "audio.${extension.ifBlank { "wav" }}")
         writeAudio(audio)
-        return Recording(id = id, title = title, createdAt = id.toLong(), audioFile = audio).also(::save)
+        return Recording(id = id, title = title, createdAt = id.toLong(), audioFile = audio, profile = profile).also(::save)
     }
 
     fun save(recording: Recording) {
@@ -37,6 +38,7 @@ class RecordingRepository(filesDir: File) {
             .put("title", recording.title)
             .put("createdAt", recording.createdAt)
             .put("audio", recording.audioFile.name)
+            .put("profile", recording.profile.name)
             .put("durationMs", recording.durationMs)
             .put("status", recording.status.name)
             .put("processingMs", recording.processingMs)
@@ -46,6 +48,14 @@ class RecordingRepository(filesDir: File) {
             .putOpt("error", recording.error)
         File(dir, META).writeText(meta.toString())
         File(dir, TRANSCRIPT).writeText(TranscriptJson.encode(recording.utterances))
+    }
+
+    /** Several files imported at once must not share a millisecond-based id. */
+    @Synchronized
+    private fun uniqueId(): String {
+        var id = System.currentTimeMillis()
+        while (File(root, id.toString()).exists()) id++
+        return id.toString()
     }
 
     fun delete(recording: Recording) {
@@ -65,6 +75,7 @@ class RecordingRepository(filesDir: File) {
             title = meta.getString("title"),
             createdAt = meta.getLong("createdAt"),
             audioFile = File(dir, meta.getString("audio")),
+            profile = runCatching { Profile.valueOf(meta.optString("profile")) }.getOrDefault(Profile.PODCAST),
             durationMs = meta.optLong("durationMs"),
             status = RecordingStatus.valueOf(meta.getString("status")),
             utterances = readTranscript(File(dir, TRANSCRIPT)),

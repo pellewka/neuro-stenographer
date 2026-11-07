@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.hexteam.stenographer.audio.Resampler
+import ru.hexteam.stenographer.audio.StreamingResampler
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
@@ -31,6 +32,26 @@ class ResamplerTest {
 
         val peak = (100 until out.size - 100).maxOf { abs(out[it]) }
         assertTrue("alias peak $peak", peak < 0.1f)
+    }
+
+    @Test
+    fun `streaming in uneven chunks matches whole-signal resampling`() {
+        val input = tone(440.0, 48_000, 0.7)
+        val whole = Resampler.resample(input, 44_100, 16_000)
+
+        val streamed = mutableListOf<Float>()
+        val resampler = StreamingResampler(44_100, 16_000)
+        var offset = 0
+        for (size in generateSequence(997) { (it * 7 + 13) % 5000 + 1 }) {
+            if (offset >= input.size) break
+            val end = minOf(input.size, offset + size)
+            resampler.push(input.copyOfRange(offset, end)) { streamed += it.toList() }
+            offset = end
+        }
+        resampler.finish { streamed += it.toList() }
+
+        assertEquals(whole.size, streamed.size)
+        whole.indices.forEach { assertEquals(whole[it], streamed[it], 1e-5f) }
     }
 
     @Test

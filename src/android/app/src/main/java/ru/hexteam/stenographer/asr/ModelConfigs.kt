@@ -71,7 +71,7 @@ object ModelConfigs {
     )
 
     /** @param numSpeakers exact speaker count, or 0 to detect automatically. */
-    fun diarization(threads: Int, numSpeakers: Int) = OfflineSpeakerDiarizationConfig(
+    fun diarization(threads: Int, numSpeakers: Int, minDurationOff: Float = 0.4f) = OfflineSpeakerDiarizationConfig(
         segmentation = OfflineSpeakerSegmentationModelConfig(
             pyannote = OfflineSpeakerSegmentationPyannoteModelConfig(model = SEGMENTATION_MODEL),
             numThreads = threads,
@@ -82,6 +82,8 @@ object ModelConfigs {
             threshold = CLUSTER_THRESHOLD,
         ),
         minDurationOn = 0.2f,
-        minDurationOff = 0.4f,
+        minDurationOff = minDurationOff,
     )
+
+    fun embedding(threads: Int) = SpeakerEmbeddingExtractorConfig(model = EMBEDDING_MODEL, numThreads = threads)
 }
