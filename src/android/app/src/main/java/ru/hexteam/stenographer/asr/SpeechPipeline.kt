@@ -3,19 +3,37 @@ package ru.hexteam.stenographer.asr
 import android.content.res.AssetManager
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiser
 import com.k2fsa.sherpa.onnx.Vad
+import ru.hexteam.stenographer.audio.AudioEnhancer
 import ru.hexteam.stenographer.model.SpeakerTurn
 import ru.hexteam.stenographer.model.TimedWord
 import ru.hexteam.stenographer.model.Utterance
-import kotlin.math.abs
+
+enum class DenoiseMode { AUTO, ON, OFF }
+
+data class PipelineOptions(
+    /** Exact speaker count, or 0 to detect automatically. */
+    val numSpeakers: Int = 0,
+    val denoise: DenoiseMode = DenoiseMode.AUTO,
+    val latinAnglicisms: Boolean = true,
+)
+
+data class PipelineResult(
+    val utterances: List<Utterance>,
+    val snrDb: Float,
+    val denoised: Boolean,
+)
 
 /**
- * Full on-device pipeline: VAD → GigaAM ASR with token timestamps →
- * pyannote + 3D-Speaker diarization → word/speaker alignment.
+ * Full on-device pipeline: high-pass + level → (adaptive) DPDFNet denoising →
+ * VAD → GigaAM ASR with token timestamps → pyannote + 3D-Speaker diarization →
+ * word/speaker alignment → Latin spelling of anglicisms.
  */
 class SpeechPipeline(private val assets: AssetManager, private val threads: Int) {
 
     enum class Stage(val title: String) {
+        DENOISE("Шумоподавление"),
         VAD("Поиск речи"),
         ASR("Распознавание речи"),
         DIARIZATION("Определение говорящих"),
@@ -33,8 +51,18 @@ class SpeechPipeline(private val assets: AssetManager, private val threads: Int)
         recognizer
     }
 
-    fun process(samples: FloatArray, numSpeakers: Int, listener: ProgressListener): List<Utterance> {
-        val audio = normalize(samples)
+    fun process(samples: FloatArray, options: PipelineOptions, listener: ProgressListener): PipelineResult {
+        var audio = AudioEnhancer.normalizePeak(AudioEnhancer.highPass(samples, ModelConfigs.SAMPLE_RATE))
+        val snr = AudioEnhancer.estimateSnrDb(audio, ModelConfigs.SAMPLE_RATE)
+        val denoise = when (options.denoise) {
+            DenoiseMode.ON -> true
+            DenoiseMode.OFF -> false
+            DenoiseMode.AUTO -> snr < AUTO_DENOISE_SNR_DB
+        }
+        if (denoise) {
+            listener.onProgress(Stage.DENOISE, 0f)
+            audio = AudioEnhancer.normalizePeak(denoise(audio))
+        }
 
         listener.onProgress(Stage.VAD, 0f)
         val chunks = detectSpeech(audio)
@@ -44,12 +72,26 @@ class SpeechPipeline(private val assets: AssetManager, private val threads: Int)
             words += recognize(chunk)
             listener.onProgress(Stage.ASR, (i + 1f) / chunks.size)
         }
-        if (words.isEmpty()) return emptyList()
+        if (words.isEmpty()) return PipelineResult(emptyList(), snr, denoise)
 
-        val turns = diarize(audio, numSpeakers) { listener.onProgress(Stage.DIARIZATION, it) }
+        val turns = diarize(audio, options.numSpeakers) { listener.onProgress(Stage.DIARIZATION, it) }
 
         listener.onProgress(Stage.ALIGN, 1f)
-        return TranscriptAligner.align(words, turns)
+        val utterances = TranscriptAligner.align(words, turns).let { list ->
+            if (options.latinAnglicisms) list.map { it.copy(text = AnglicismNormalizer.normalize(it.text)) } else list
+        }
+        return PipelineResult(utterances, snr, denoise)
+    }
+
+    private fun denoise(audio: FloatArray): FloatArray {
+        val denoiser = OfflineSpeechDenoiser(assets, ModelConfigs.denoiser(threads))
+        try {
+            val result = denoiser.run(audio, ModelConfigs.SAMPLE_RATE)
+            check(result.sampleRate == ModelConfigs.SAMPLE_RATE) { "Unexpected denoiser rate ${result.sampleRate}" }
+            return result.samples
+        } finally {
+            denoiser.release()
+        }
     }
 
     private class Chunk(val start: Float, val end: Float, val samples: FloatArray)
@@ -113,19 +155,12 @@ class SpeechPipeline(private val assets: AssetManager, private val threads: Int)
         }
     }
 
-    /** Brings quiet recordings up to a usable level without clipping loud ones. */
-    private fun normalize(samples: FloatArray): FloatArray {
-        val peak = samples.maxOfOrNull { abs(it) } ?: return samples
-        if (peak < 1e-4f || peak >= TARGET_PEAK) return samples
-        val gain = minOf(TARGET_PEAK / peak, MAX_GAIN)
-        return FloatArray(samples.size) { samples[it] * gain }
-    }
-
     private fun Int.toSec(): Float = this.toFloat() / ModelConfigs.SAMPLE_RATE
 
     private companion object {
         const val PAD_SAMPLES = ModelConfigs.SAMPLE_RATE / 10 // 100 ms around each VAD chunk
-        const val TARGET_PEAK = 0.9f
-        const val MAX_GAIN = 10f
+
+        /** Below this estimated SNR the DPDFNet denoiser is applied in AUTO mode. */
+        const val AUTO_DENOISE_SNR_DB = 20f
     }
 }

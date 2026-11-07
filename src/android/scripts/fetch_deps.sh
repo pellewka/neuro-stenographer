@@ -41,6 +41,7 @@ fi
 fetch "$GH/speaker-recongition-models/3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx" \
   "$ASSETS/3dspeaker-eres2netv2.onnx"
 fetch "$GH/asr-models/silero_vad.onnx" "$ASSETS/silero_vad.onnx"
+fetch "$GH/speech-enhancement-models/dpdfnet2.onnx" "$ASSETS/dpdfnet2.onnx"
 fetch "$QWEN_URL" "$ASSETS/qwen3-1.7b-q4_k_m.gguf"
 
 if [ ! -f "$LLAMA_DIR/CMakeLists.txt" ]; then

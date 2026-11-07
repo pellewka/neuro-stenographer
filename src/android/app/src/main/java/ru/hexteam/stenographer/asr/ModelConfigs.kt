@@ -7,6 +7,9 @@ import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarizationConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationPyannoteModelConfig
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserConfig
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserDpdfNetModelConfig
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
@@ -19,6 +22,7 @@ object ModelConfigs {
     private const val VAD_MODEL = "models/silero_vad.onnx"
     private const val SEGMENTATION_MODEL = "models/pyannote-segmentation-3.0.onnx"
     private const val EMBEDDING_MODEL = "models/3dspeaker-eres2netv2.onnx"
+    private const val DENOISER_MODEL = "models/dpdfnet2.onnx"
 
     const val SAMPLE_RATE = 16_000
 
@@ -37,7 +41,16 @@ object ModelConfigs {
             modelType = "nemo_transducer",
             numThreads = threads,
         ),
-        decodingMethod = "greedy_search",
+        // Beam search recovers words greedy decoding drops (~+35% ASR time, timestamps kept).
+        decodingMethod = "modified_beam_search",
+        maxActivePaths = 4,
+    )
+
+    fun denoiser(threads: Int) = OfflineSpeechDenoiserConfig(
+        model = OfflineSpeechDenoiserModelConfig(
+            dpdfnet = OfflineSpeechDenoiserDpdfNetModelConfig(model = DENOISER_MODEL),
+            numThreads = threads,
+        ),
     )
 
     fun vad() = VadModelConfig(
