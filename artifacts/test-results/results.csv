@@ -1,0 +1,4 @@
+test_id,file_name,duration_s,processing_s,rtf,speakers_ref,speakers_found,utterances_ref,utterances_found,device,notes
+emu-001,dialog_cats.wav,30.99,8.1,0.26,2,2,6,6,AVD Pixel 8 API36 arm64 (M-series Mac),default settings
+emu-002,dialog_cats.wav,30.99,17.2,0.56,2,2,6,6,AVD Pixel 8 API36 arm64 (M-series Mac),LLM punctuation polish on
+mac-001,dialog_cats.wav,30.99,5.2,0.17,2,2,6,6,Mac sherpa-onnx python 4 threads,model validation
