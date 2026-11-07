@@ -47,16 +47,21 @@ class SpeakerLinker(
         return mapping
     }
 
-    /** global id → final speaker index (0-based), merging closest voices down to [maxSpeakers]. */
+    /**
+     * global id → final speaker index (0-based). Per-block diarization tends to split one
+     * person into two clusters, so voices closer than [threshold] are always merged; then the
+     * closest voices are merged further until at most [maxSpeakers] remain.
+     */
     fun finalMapping(): Map<Int, Int> {
         val clusters = globals.map { mutableListOf(it.id) to it.sum.copyOf() }.toMutableList()
-        while (clusters.size > maxSpeakers.coerceAtLeast(1)) {
+        while (clusters.size > 1) {
             var best = Triple(0, 1, -2f)
             for (i in clusters.indices) for (j in i + 1 until clusters.size) {
                 val sim = cosine(normalize(clusters[i].second), normalize(clusters[j].second))
                 if (sim > best.third) best = Triple(i, j, sim)
             }
-            val (i, j, _) = best
+            val (i, j, similarity) = best
+            if (similarity < threshold && clusters.size <= maxSpeakers.coerceAtLeast(1)) break
             val merged = clusters[i].first + clusters[j].first
             val sum = FloatArray(clusters[i].second.size) { clusters[i].second[it] + clusters[j].second[it] }
             clusters.removeAt(j)

@@ -63,6 +63,19 @@ class LongAudioLogicTest {
     }
 
     @Test
+    fun `one person split into two clusters inside a block is merged back`() {
+        val linker = SpeakerLinker(maxSpeakers = 5)
+        // The diarizer split voice A of block 1 into two local speakers.
+        val m = linker.link(listOf(LocalSpeaker(0, voiceA, 30f), LocalSpeaker(1, near(voiceA), 20f), LocalSpeaker(2, voiceB, 30f)))
+
+        val final = linker.finalMapping()
+
+        assertEquals(final.getValue(m.getValue(0)), final.getValue(m.getValue(1)))
+        assertNotEquals(final.getValue(m.getValue(0)), final.getValue(m.getValue(2)))
+        assertEquals(2, final.values.toSet().size)
+    }
+
+    @Test
     fun `smoother gives short interruptions to the surrounding speaker`() {
         val turns = listOf(
             SpeakerTurn(0f, 60f, 0),
