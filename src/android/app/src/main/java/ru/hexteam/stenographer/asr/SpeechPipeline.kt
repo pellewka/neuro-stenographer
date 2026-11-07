@@ -1,6 +1,7 @@
 package ru.hexteam.stenographer.asr
 
 import android.content.res.AssetManager
+import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization
 import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiser
@@ -112,16 +113,19 @@ class SpeechPipeline(
             if (chunks.isEmpty()) return@forEachIndexed
 
             val singleBlockExact = blocks.size == 1 && options.numSpeakers > 0
-            val local = diarize(block, if (singleBlockExact) options.numSpeakers else 0, minDurationOff(profile, music)) {
+            val windowShift = if (blocks.size == 1) FINE_WINDOW_SHIFT else COARSE_WINDOW_SHIFT
+            val local = diarize(block, if (singleBlockExact) options.numSpeakers else 0, minDurationOff(profile, music), windowShift) {
                 report("Определение говорящих", asrTo, 1f, it)
             }
             val mapping = linker.link(localSpeakers(block, local))
+            Log.i(TAG, "block ${index + 1}/${blocks.size}: ${local.map { it.speaker }.distinct().size} local speakers → $mapping")
             turns += local.map { SpeakerTurn(it.start + offsetSec, it.end + offsetSec, mapping.getValue(it.speaker)) }
         }
 
         if (words.isEmpty()) return PipelineResult(emptyList(), denoisedAny, music)
         listener.onProgress("Сборка реплик", 1f)
         val final = linker.finalMapping()
+        Log.i(TAG, "final speakers: $final")
         var globalTurns = turns.map { it.copy(speaker = final.getValue(it.speaker)) }.sortedBy { it.start }
         if (profile.minTurnSec > 0f) globalTurns = TurnSmoother.smooth(globalTurns, profile.minTurnSec)
         val maxUtterance = if (music) Profile.MUSIC.maxUtteranceSec else profile.maxUtteranceSec
@@ -216,8 +220,14 @@ class SpeechPipeline(
         }
     }
 
-    private fun diarize(audio: FloatArray, numSpeakers: Int, minDurationOff: Float, onProgress: (Float) -> Unit): List<SpeakerTurn> {
-        val diarizer = OfflineSpeakerDiarization(assets, ModelConfigs.diarization(threads, numSpeakers, minDurationOff))
+    private fun diarize(
+        audio: FloatArray,
+        numSpeakers: Int,
+        minDurationOff: Float,
+        windowShift: Float,
+        onProgress: (Float) -> Unit,
+    ): List<SpeakerTurn> {
+        val diarizer = OfflineSpeakerDiarization(assets, ModelConfigs.diarization(threads, numSpeakers, minDurationOff, windowShift))
         try {
             // sherpa-onnx JNI looks up invoke(IIJ)Ljava/lang/Integer; which only class-based
             // lambdas have; Kotlin 2 compiles plain lambdas via invokedynamic.
@@ -235,6 +245,9 @@ class SpeechPipeline(
     private fun Int.toSec(): Float = this.toFloat() / ModelConfigs.SAMPLE_RATE
 
     private companion object {
+        const val TAG = "SpeechPipeline"
+        const val FINE_WINDOW_SHIFT = 0.1f
+        const val COARSE_WINDOW_SHIFT = 0.25f
         const val PAD_SAMPLES = ModelConfigs.SAMPLE_RATE / 10 // 100 ms around each VAD chunk
 
         /** Below this estimated SNR the DPDFNet denoiser is applied in AUTO mode. */

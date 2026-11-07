@@ -71,9 +71,15 @@ object ModelConfigs {
     )
 
     /** @param numSpeakers exact speaker count, or 0 to detect automatically. */
-    fun diarization(threads: Int, numSpeakers: Int, minDurationOff: Float = 0.4f) = OfflineSpeakerDiarizationConfig(
+    /**
+     * @param windowShift step of the 10 s segmentation window as a fraction of it. Each step costs
+     *   one voice embedding: 0.1 gave 98% speaker accuracy on a 10-min test block, 0.25 gave 92.5%
+     *   at 2.4× the speed, so long recordings use the coarser step.
+     */
+    fun diarization(threads: Int, numSpeakers: Int, minDurationOff: Float = 0.4f, windowShift: Float = 0.1f) =
+        OfflineSpeakerDiarizationConfig(
         segmentation = OfflineSpeakerSegmentationModelConfig(
-            pyannote = OfflineSpeakerSegmentationPyannoteModelConfig(model = SEGMENTATION_MODEL),
+            pyannote = OfflineSpeakerSegmentationPyannoteModelConfig(model = SEGMENTATION_MODEL, windowShiftRatio = windowShift),
             numThreads = threads,
         ),
         embedding = SpeakerEmbeddingExtractorConfig(model = EMBEDDING_MODEL, numThreads = threads),
