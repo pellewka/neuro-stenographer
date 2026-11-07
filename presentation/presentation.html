@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Нейро-стенографист - презентация</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500..800&family=Inter:wght@400;600&display=swap">
+<style>
+@page { size: 1920px 1080px; margin: 0 }
+html, body { margin: 0; background: #1b1f2a }
+section { width: 1920px; height: 1080px; position: relative; box-sizing: border-box; overflow: hidden;
+  break-after: page; margin: 0 auto 32px; box-shadow: 0 8px 32px rgba(0,0,0,.35) }
+section * { box-sizing: border-box; margin: 0 }
+h1, h2, h3, p, ul, ol { margin: 0 }
+table { border-collapse: collapse; width: 100% }
+th, td { padding: .35em .6em; border-bottom: 1px solid #C9D3E6; text-align: left; vertical-align: top }
+th { font-weight: 700 }
+a { color: inherit; text-decoration: none }
+@media screen { body { padding: 32px 0 } }
+@media print { html, body { background: none } body { padding: 0 } section { margin: 0; box-shadow: none }
+  /* Print rasterizes blurred shadows as solid grey boxes. */
+  section img { box-shadow: none !important } }
+</style>
+<script>
+  // Fit the 1920px slides to the window width on screen.
+  function fit() { if (!matchMedia('print').matches) document.body.style.zoom = Math.min(1, (innerWidth - 32) / 1920); }
+  addEventListener('resize', fit); addEventListener('DOMContentLoaded', fit);
+</script>
+</head>
+<body>
+<section id="cover" data-transition="fade" style="background:linear-gradient(160deg, #0B3BFF 0%, #1E88FF 55%, #34B3FF 100%);color:#FBFCFF;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:row;align-items:center;gap:96px">
+<svg aria-label="Большая круглая кнопка записи с микрофоном и расходящимися кольцами" width="620" height="620" viewBox="0 0 620 620" style="width:620px;height:620px">
+<circle cx="310" cy="310" r="300" fill="#FFFFFF" fill-opacity="0.08"/>
+<circle cx="310" cy="310" r="250" fill="#FFFFFF" fill-opacity="0.12"/>
+<circle cx="310" cy="310" r="200" fill="#FBFCFF"/>
+<rect x="268" y="190" width="84" height="150" rx="42" fill="#0A5BFF"/>
+<path d="M226 300 a84 84 0 0 0 168 0" fill="none" stroke="#0A5BFF" stroke-width="22" stroke-linecap="round"/>
+<rect x="299" y="384" width="22" height="50" rx="6" fill="#0A5BFF"/>
+<rect x="258" y="424" width="104" height="22" rx="11" fill="#0A5BFF"/>
+</svg>
+<div style="flex:1;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:32px;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:#DCEAFF">Команда Буримы · Nuclear IT Hack</p>
+<h1 style="font-family:Manrope, Arial, sans-serif;font-size:120px;font-weight:800;line-height:1.0;color:#FBFCFF">Нейро-<br>стенографист</h1>
+<p style="font-size:44px;line-height:1.3;color:#FBFCFF">Нажми одну кнопку, и разговор станет текстом с говорящими и таймкодами. Прямо на телефоне, без интернета.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#DCEAFF">Android · офлайн · GigaAM + диаризация + локальная LLM Qwen3</p>
+</section>
+<section id="works" data-transition="fade" style="background:#F4F7FD;color:#0C1B3D;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:row;gap:96px;align-items:center">
+<div style="flex:1;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:Manrope, Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;color:#0C1B3D">Это работает, и мы это измерили</h2>
+<div style="display:flex;flex-direction:row;gap:40px;align-items:center">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:160px;font-weight:800;line-height:1.0;color:#0A5BFF;white-space:nowrap">5,8%</p>
+<p style="font-size:32px;line-height:1.3;color:#4A5874">ошибок в словах (WER) на тестовом диалоге; оба говорящих найдены, таймкоды точнее 0,1 с</p>
+</div>
+<table style="font-size:30px;color:#0C1B3D">
+<tr><th style="width:34%;text-align:left">Запись</th><th style="width:16%;text-align:left">Длина</th><th style="width:28%;text-align:left">Говорящие</th><th style="width:22%;text-align:right">Обработка</th></tr>
+<tr><td>Диалог</td><td>31 с</td><td>2 из 2</td><td style="text-align:right">7 с</td></tr>
+<tr style="background:#E8EFFD"><td>Подкаст</td><td>21 мин</td><td>3 из 3 · 91%</td><td style="text-align:right">8 мин</td></tr>
+<tr><td>Презентация</td><td>21 мин</td><td>3 из 3 · 100%</td><td style="text-align:right">2 мин</td></tr>
+<tr style="background:#E8EFFD"><td>Песня</td><td>2 мин</td><td>текст 81%</td><td style="text-align:right">5 мин</td></tr>
+</table>
+</div>
+<img src="img/history_expanded.png" alt="Скриншот: раскрытая запись с протоколом Qwen3, временем обработки 7,1 с и репликами двух говорящих" style="width:351px;height:780px;object-fit:cover;border-radius:40px;box-shadow:0 24px 64px rgba(12,27,61,0.25)">
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#4A5874">Эмулятор Pixel 8 (Android 16) · говорящие в %: доля времени речи, отнесённая к верному человеку · подробно в docs/TEST_RESULTS.md</p>
+</section>
+<section id="backend" data-transition="fade" style="background:#0C1B3D;color:#FBFCFF;font-family:Inter, Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:Manrope, Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;color:#FBFCFF">Под капотом: всё на телефоне</h2>
+<div style="position:relative;width:1664px;height:700px">
+<div style="position:absolute;left:0px;top:280px;width:240px;height:140px;display:flex;flex-direction:column;justify-content:center;gap:6px;background:#FBFCFF;padding:20px 24px;border-radius:24px">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:28px;font-weight:800;color:#0C1B3D">Аудио</p>
+<p style="font-size:24px;line-height:1.3;color:#4A5874">файл или микрофон</p>
+</div>
+<div style="position:absolute;left:330px;top:280px;width:280px;height:140px;display:flex;flex-direction:column;justify-content:center;gap:6px;background:#16295A;padding:20px 24px;border-radius:24px">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:28px;font-weight:800;color:#FBFCFF">Очистка</p>
+<p style="font-size:24px;line-height:1.3;color:#C9D6F2">DPDFNet, для песен вокал UVR</p>
+</div>
+<div style="position:absolute;left:700px;top:110px;width:320px;height:150px;display:flex;flex-direction:column;justify-content:center;gap:6px;background:#16295A;padding:20px 24px;border-radius:24px">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:28px;font-weight:800;color:#FBFCFF">Речь в текст</p>
+<p style="font-size:24px;line-height:1.3;color:#C9D6F2">Silero VAD + GigaAM v3, время каждого слова</p>
+</div>
+<div style="position:absolute;left:700px;top:450px;width:320px;height:150px;display:flex;flex-direction:column;justify-content:center;gap:6px;background:#16295A;padding:20px 24px;border-radius:24px">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:28px;font-weight:800;color:#FBFCFF">Кто говорит</p>
+<p style="font-size:24px;line-height:1.3;color:#C9D6F2">pyannote + CAM++, отпечатки голоса</p>
+</div>
+<div style="position:absolute;left:1100px;top:280px;width:260px;height:140px;display:flex;flex-direction:column;justify-content:center;gap:6px;background:#0A5BFF;padding:20px 24px;border-radius:24px">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:28px;font-weight:800;color:#FBFCFF">Склейка</p>
+<p style="font-size:24px;line-height:1.3;color:#EAF2FF">слово к говорящему</p>
+</div>
+<div style="position:absolute;left:1440px;top:140px;width:224px;height:140px;display:flex;flex-direction:column;justify-content:center;gap:6px;background:#0C1B3D;border:2px solid #5FB4FF;padding:20px 24px;border-radius:24px">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:28px;font-weight:800;color:#FBFCFF">JSON</p>
+<p style="font-size:24px;line-height:1.3;color:#C9D6F2">формат ТЗ</p>
+</div>
+<div style="position:absolute;left:1440px;top:420px;width:224px;height:140px;display:flex;flex-direction:column;justify-content:center;gap:6px;background:#0C1B3D;border:2px solid #5FB4FF;padding:20px 24px;border-radius:24px">
+<p style="font-family:Manrope, Arial, sans-serif;font-size:28px;font-weight:800;color:#FBFCFF">Протокол</p>
+<p style="font-size:24px;line-height:1.3;color:#C9D6F2">Qwen3-1.7B</p>
+</div>
+<svg style="position:absolute;left:0;top:0" width="1664" height="700" viewBox="0 0 1664 700"><defs><marker id="arrow-5FB4FF" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#5FB4FF"/></marker></defs><path d="M 240 350 L 330 350" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-5FB4FF)"/><path d="M 610 350 L 655 350" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M 655 350 L 655 185 L 700 185" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-5FB4FF)"/><path d="M 655 350 L 655 525 L 700 525" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-5FB4FF)"/><path d="M 1020 185 L 1060 185 L 1060 350" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M 1020 525 L 1060 525 L 1060 350" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M 1060 350 L 1100 350" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-5FB4FF)"/><path d="M 1360 350 L 1400 350" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M 1400 350 L 1400 210 L 1440 210" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-5FB4FF)"/><path d="M 1400 350 L 1400 490 L 1440 490" fill="none" stroke="#5FB4FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-5FB4FF)"/></svg>
+<p style="position:absolute;left:700px;top:330px;width:320px;font-size:24px;font-weight:600;color:#5FB4FF;text-align:center">идут параллельно</p>
+<p style="position:absolute;left:0px;top:640px;width:1664px;font-size:24px;color:#8FA3CC">Все модели внутри APK · нет разрешения INTERNET · длинные записи блоками по 10 минут · Kotlin, sherpa-onnx, llama.cpp</p>
+</div>
+</section>
+<section id="why-us" data-transition="fade" style="background:#F4F7FD;color:#0C1B3D;font-family:Inter, Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:Manrope, Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;color:#0C1B3D">Дополнительные функции</h2>
+<table style="font-size:26px;color:#0C1B3D">
+<tr><th style="width:25%;text-align:left">Функция</th><th style="width:36%;text-align:left">Как работает</th><th style="width:39%;text-align:left">Пример</th></tr>
+<tr><td><b>Запятые и точки</b></td><td>GigaAM v3 сразу ставит пунктуацию и заглавные буквы</td><td>добрый день коллеги → <span style="color:#0A5BFF">Добрый день, коллеги.</span></td></tr>
+<tr style="background:#E8EFFD"><td><b>Шумоподавление</b></td><td>DPDFNet включается сам, если запись шумная</td><td>ошибок на шумной записи: 6 → <span style="color:#0A5BFF">4</span></td></tr>
+<tr><td><b>Отделение вокала</b></td><td>Для песен голос отделяется от музыки</td><td>текст песни: 33% → <span style="color:#0A5BFF">81%</span></td></tr>
+<tr style="background:#E8EFFD"><td><b>Англицизмы</b></td><td>Термины пишутся латиницей, как принято</td><td>гитхаб, пул-реквест → <span style="color:#0A5BFF">GitHub, pull request</span></td></tr>
+<tr><td><b>Протокол встречи</b></td><td>Локальная Qwen3 после расшифровки</td><td>тема, тезисы каждого, решения, задачи</td></tr>
+<tr style="background:#E8EFFD"><td><b>Правка реплик</b></td><td>Исправить текст и говорящего или распознать фрагмент заново</td><td>одна кнопка-карандаш у каждой реплики</td></tr>
+</table>
+</section>
+<section id="convenient" data-transition="fade" style="background:linear-gradient(160deg, #0B3BFF 0%, #1E88FF 55%, #34B3FF 100%);color:#FBFCFF;font-family:Inter, Arial, sans-serif;padding:128px;display:flex;flex-direction:column">
+<h2 style="position:absolute;left:128px;top:128px;width:600px;font-family:Manrope, Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;color:#FBFCFF">Почему это удобно</h2>
+<img src="img/home.png" alt="Скриншот главного экрана: выбор профиля, большая кнопка записи, кнопка импорта и нижняя панель" style="position:absolute;left:780px;top:200px;width:324px;height:720px;object-fit:cover;border-radius:36px;box-shadow:0 24px 64px rgba(12,27,61,0.35)">
+<p style="position:absolute;left:128px;top:316px;width:520px;font-size:32px;line-height:1.3;color:#FBFCFF"><b>Профиль под запись:</b> подкаст, музыка или презентация</p>
+<p style="position:absolute;left:128px;top:691px;width:520px;font-size:32px;line-height:1.3;color:#FBFCFF"><b>Импорт файлов:</b> хоть весь альбом, встанут в очередь</p>
+<p style="position:absolute;left:1180px;top:532px;width:612px;font-size:32px;line-height:1.3;color:#FBFCFF"><b>Одна большая кнопка:</b> нажал и говоришь, нажал ещё раз и готово</p>
+<p style="position:absolute;left:1180px;top:820px;width:612px;font-size:32px;line-height:1.3;color:#FBFCFF"><b>История:</b> «+1», поиск по тексту, JSON в один тап</p>
+<svg style="position:absolute;left:0;top:0" width="1920" height="1080" viewBox="0 0 1920 1080"><defs><marker id="arrow-FBFCFF" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#FBFCFF"/></marker></defs><path d="M 656 358 L 930 358" fill="none" stroke="#FBFCFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-FBFCFF)"/><path d="M 656 733 L 930 733" fill="none" stroke="#FBFCFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-FBFCFF)"/><path d="M 1172 574 L 1010 574" fill="none" stroke="#FBFCFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-FBFCFF)"/><path d="M 1172 862 L 900 862" fill="none" stroke="#FBFCFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-FBFCFF)"/></svg>
+<p style="position:absolute;left:128px;top:470px;width:520px;font-size:28px;line-height:1.35;color:#DCEAFF">Можно свернуть приложение: прогресс виден в уведомлении, а запись никуда не отправляется.</p>
+</section>
+<section id="story" data-transition="fade" style="background:#F4F7FD;color:#0C1B3D;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column">
+<h2 style="position:absolute;left:128px;top:128px;width:1664px;font-family:Manrope, Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;color:#0C1B3D">Один вечер Ани</h2>
+<p style="position:absolute;left:128px;top:228px;width:1664px;font-size:32px;line-height:1.3;color:#4A5874">Аня, 27 лет, ведёт подкаст про стартапы. Сегодня выпуск на 2 часа с тремя гостями.</p>
+<div style="position:absolute;left:128px;top:497px;width:1664px;height:6px;background:#BFD3FB;border-radius:3px"></div>
+<div style="position:absolute;left:264px;top:486px;width:28px;height:28px;background:#0A5BFF;border-radius:50%"></div>
+<div style="position:absolute;left:605px;top:486px;width:28px;height:28px;background:#0A5BFF;border-radius:50%"></div>
+<div style="position:absolute;left:946px;top:486px;width:28px;height:28px;background:#0A5BFF;border-radius:50%"></div>
+<div style="position:absolute;left:1287px;top:486px;width:28px;height:28px;background:#0A5BFF;border-radius:50%"></div>
+<div style="position:absolute;left:1622px;top:480px;width:40px;height:40px;background:#2FB457;border-radius:50%"></div>
+<p style="position:absolute;left:128px;top:410px;width:300px;font-family:Manrope, Arial, sans-serif;font-size:44px;font-weight:800;color:#0A5BFF;text-align:center">19:00</p>
+<p style="position:absolute;left:469px;top:410px;width:300px;font-family:Manrope, Arial, sans-serif;font-size:44px;font-weight:800;color:#0A5BFF;text-align:center">19:05</p>
+<p style="position:absolute;left:810px;top:410px;width:300px;font-family:Manrope, Arial, sans-serif;font-size:44px;font-weight:800;color:#0A5BFF;text-align:center">~19:50</p>
+<p style="position:absolute;left:1151px;top:410px;width:300px;font-family:Manrope, Arial, sans-serif;font-size:44px;font-weight:800;color:#0A5BFF;text-align:center">19:55</p>
+<p style="position:absolute;left:1492px;top:410px;width:300px;font-family:Manrope, Arial, sans-serif;font-size:44px;font-weight:800;color:#2FB457;text-align:center">20:00</p>
+<p style="position:absolute;left:128px;top:548px;width:300px;font-size:28px;line-height:1.35;color:#0C1B3D;text-align:center">Записала выпуск: 2 часа, три гостя</p>
+<p style="position:absolute;left:469px;top:548px;width:300px;font-size:28px;line-height:1.35;color:#0C1B3D;text-align:center">Выбрала «Подкаст», импортировала файл, убрала телефон</p>
+<p style="position:absolute;left:810px;top:548px;width:300px;font-size:28px;line-height:1.35;color:#0C1B3D;text-align:center">Уведомление: готово, в истории «+1»</p>
+<p style="position:absolute;left:1151px;top:548px;width:300px;font-size:28px;line-height:1.35;color:#0C1B3D;text-align:center">Читает протокол: тезисы каждого гостя</p>
+<p style="position:absolute;left:1492px;top:548px;width:300px;font-size:28px;line-height:1.35;color:#0C1B3D;text-align:center">Поправила реплику и отправила JSON монтажёру</p>
+<p style="position:absolute;left:128px;top:790px;width:1664px;font-size:32px;line-height:1.3;color:#0C1B3D;background:#E3ECFF;padding:24px 36px;border-radius:24px">Аня ни разу не открыла ноутбук, а запись ни разу не покинула телефон.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#4A5874">Вымышленный пример · время обработки оценено по замеру на эмуляторе (RTF 0,39); на современном телефоне быстрее</p>
+</section>
+<section id="end" style="background:linear-gradient(160deg, #0B3BFF 0%, #1E88FF 55%, #34B3FF 100%);color:#FBFCFF;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px">
+<svg aria-label="Белый круг с зелёной галочкой: расшифровка готова" width="360" height="360" viewBox="0 0 360 360" style="width:360px;height:360px">
+<circle cx="180" cy="180" r="175" fill="#FFFFFF" fill-opacity="0.10"/>
+<circle cx="180" cy="180" r="140" fill="#FBFCFF"/>
+<path d="M118 184 L162 228 L246 138" fill="none" stroke="#2FB457" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+<h1 style="font-family:Manrope, Arial, sans-serif;font-size:120px;font-weight:800;line-height:1.0;color:#FBFCFF;text-align:center">Спасибо!</h1>
+<p style="font-size:44px;line-height:1.3;color:#FBFCFF;text-align:center">Нажмите, и разговор станет текстом.</p>
+<p style="font-size:32px;font-weight:600;color:#0A5BFF;background:#FBFCFF;padding:18px 40px;border-radius:48px;text-align:center"><a href="https://github.com/pellewka/neuro-stenographer">github.com/pellewka/neuro-stenographer</a></p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#DCEAFF;text-align:center">APK, демо-видео и все замеры в релизе v1.0.0 · Команда Буримы · Nuclear IT Hack 2026</p>
+</section>
+
+</body>
+</html>

@@ -72,3 +72,4 @@ cd src/android
 - [Ограничения](docs/LIMITATIONS.md)
 - [Тестирование](docs/TEST_RESULTS.md)
 - [Соответствие ТЗ](docs/TZ_COMPLIANCE.md)
+- [Презентация](presentation/presentation.pdf) и [заметки докладчика](presentation/notes.md)
